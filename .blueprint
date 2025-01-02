@@ -1,0 +1,23 @@
+created:
+    - database/factories/SavingFactory.php
+    - database/factories/AccountFactory.php
+    - database/factories/ContributionFactory.php
+    - database/factories/LoanFactory.php
+    - database/factories/IncomeFactory.php
+    - database/migrations/2024_10_29_111312_create_savings_table.php
+    - database/migrations/2024_10_29_111313_create_accounts_table.php
+    - database/migrations/2024_10_29_111314_create_contributions_table.php
+    - database/migrations/2024_10_29_111315_create_loans_table.php
+    - database/migrations/2024_10_29_111316_create_incomes_table.php
+    - app/Models/Saving.php
+    - app/Models/Account.php
+    - app/Models/Contribution.php
+    - app/Models/Loan.php
+    - app/Models/Income.php
+models:
+    User: { name: string, email: string, email_verified_at: 'timestamp nullable default:NULL', password: string, remember_token: 'string:100 nullable default:NULL' }
+    Saving: { amount: 'decimal:10,2', relationships: { belongsTo: User } }
+    Account: { name: string, description: string, type: 'enum:ad-hoc,one-off,recurring', relationships: { hasMany: Contribution } }
+    Contribution: { name: string, description: 'string nullable', amount: string, relationships: { belongsTo: 'User, Account' } }
+    Loan: { description: 'string nullable', amount: 'decimal:10,2', balance: string, interest: string, due_date: datetime, relationships: { belongsTo: User } }
+    Income: { source: string, amount: 'decimal:10,2', description: 'string nullable', date: datetime }

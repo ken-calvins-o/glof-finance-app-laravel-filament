@@ -1,0 +1,40 @@
+models:
+  Saving:
+    amount: decimal:10,2
+    relationships:
+      belongsTo: User
+
+  Account:
+    name: string
+    description: string
+    type: enum:ad-hoc,one-off,recurring
+    relationships:
+      hasMany: Contribution
+
+  Contribution:
+    name: string
+    description: string nullable
+    amount: string
+    relationships:
+      belongsTo: User, Account
+
+  Loan:
+    description: string nullable
+    amount: decimal:10,2
+    balance: string
+    interest: string
+    due_date: datetime
+    relationships:
+      belongsTo: User
+
+  Income:
+    source: string
+    amount: decimal:10,2
+    description: string nullable
+    date: datetime
+
+
+
+
+
+
