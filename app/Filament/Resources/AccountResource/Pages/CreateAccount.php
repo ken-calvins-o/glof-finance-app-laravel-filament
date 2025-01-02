@@ -47,22 +47,40 @@ class CreateAccount extends CreateRecord
                         'user_id' => $user->id,
                         'amount_due' => $amountDue,
                     ]);
+
+                    // Create Debt for each user (general accounts)
+                    Debt::create([
+                        'account_id' => $account->id,
+                        'user_id' => $user->id,
+                        'outstanding_balance' => $amountDue,
+                    ]);
+
+                    // Update Savings for each user (general accounts)
+                    $this->updateSavings($user->id, $amountDue);
                 });
             } else {
-                // Custom Account: Create `AccountUser` entries from provided 'accountUsers' data
+                // Custom Account: Handle users and their debts and savings
                 foreach ($accountUsersData as $accountUser) {
                     if (isset($accountUser['user_id'], $accountUser['amount_due'])) {
+                        // Create AccountUser record for the user
                         AccountUser::create([
                             'account_id' => $account->id,
                             'user_id' => $accountUser['user_id'],
                             'amount_due' => $accountUser['amount_due'],
                         ]);
+
+                        // Create Debt for the user
+                        Debt::create([
+                            'account_id' => $account->id,
+                            'user_id' => $accountUser['user_id'],
+                            'outstanding_balance' => $accountUser['amount_due'],
+                        ]);
+
+                        // Update or create a Saving record for the user
+                        $this->updateSavings($accountUser['user_id'], $accountUser['amount_due']);
                     }
                 }
             }
-
-            // Assign debts and savings to all associated users
-            $this->assignDebtsToAccountUsers($account->id);
 
             return $account;
         });
@@ -80,27 +98,9 @@ class CreateAccount extends CreateRecord
         $accountUsers = AccountUser::where('account_id', $accountId)->get();
 
         foreach ($accountUsers as $accountUser) {
-            // Create a new Debt record
-            $this->createDebt($accountUser);
-
             // Process and update Saving data for the user
             $this->updateSavings($accountUser->user_id, $accountUser->amount_due);
         }
-    }
-
-    /**
-     * Create a Debt record for a specific AccountUser.
-     *
-     * @param AccountUser $accountUser
-     * @return void
-     */
-    protected function createDebt(AccountUser $accountUser): void
-    {
-        Debt::create([
-            'account_id' => $accountUser->account_id,
-            'user_id' => $accountUser->user_id,
-            'outstanding_balance' => $accountUser->amount_due,
-        ]);
     }
 
     /**
