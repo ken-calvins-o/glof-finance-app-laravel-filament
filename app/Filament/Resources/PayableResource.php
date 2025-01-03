@@ -22,6 +22,11 @@ class PayableResource extends Resource
 
     protected static ?string $navigationGroup = 'Accounts';
 
+    public static function getPluralLabel(): string
+    {
+        return 'Payables (Debits)'; // This changes the plural form displayed in the UI
+    }
+
     public static function getNavigationBadge(): ?string
     {
         return Payable::count();

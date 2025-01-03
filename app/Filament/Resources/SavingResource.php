@@ -26,11 +26,6 @@ class SavingResource extends Resource
         return 'Statements'; // This changes the plural form displayed in the UI
     }
 
-    public static function getLabel(): string
-    {
-        return 'Statement'; // This changes the singular form displayed in the UI
-    }
-
     public static function getNavigationBadge(): ?string
     {
         return Saving::count();

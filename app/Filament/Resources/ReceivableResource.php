@@ -20,6 +20,11 @@ class ReceivableResource extends Resource
         return Receivable::count();
     }
 
+    public static function getPluralLabel(): string
+    {
+        return 'Receivables (Credits)'; // This changes the plural form displayed in the UI
+    }
+
     protected static ?string $navigationIcon = 'heroicon-o-arrows-pointing-in';
 
     protected static ?string $navigationGroup = 'Accounts';
