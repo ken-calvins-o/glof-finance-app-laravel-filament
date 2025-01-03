@@ -46,7 +46,7 @@ class IncomeResource extends Resource
                         return 'https://ui-avatars.com/api/?background=EA580C&color=fff&name=' . urlencode($record->user->name);
                     }),
                 TextColumn::make('user.name')
-                    ->label('Contributor')
+                    ->label('Member')
                     ->searchable()
                     ->sortable(),
 
@@ -66,7 +66,8 @@ class IncomeResource extends Resource
                     ->sortable(),
 
                 TextColumn::make('origin')
-                    ->searchable(),
+                    ->searchable()
+                    ->toggleable(isToggledHiddenByDefault: true),
 
                 // Show the creation date of the contribution
                 TextColumn::make('created_at')

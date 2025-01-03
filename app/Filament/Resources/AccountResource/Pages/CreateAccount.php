@@ -77,7 +77,10 @@ class CreateAccount extends CreateRecord
                         ]);
 
                         // Update or create a Saving record for the user
-                        $this->updateSavings($accountUser['user_id'], $accountUser['amount_due']);
+                        $this->updateSavings(
+                            $accountUser['user_id'],
+                            $accountUser['amount_due']
+                        );
                     }
                 }
             }

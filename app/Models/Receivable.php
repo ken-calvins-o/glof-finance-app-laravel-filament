@@ -62,9 +62,11 @@ class Receivable extends Model
                                 ->enum(PaymentMode::class)
                                 ->hintIcon('heroicon-o-banknotes')
                                 ->default(PaymentMode::Bank_Transfer)
-                                ->options(collect(PaymentMode::cases())->mapWithKeys(function ($case) {
-                                    return [$case->value => ucwords(str_replace('_', ' ', $case->value))];
-                                }))
+                                ->options(
+                                    collect(PaymentMode::cases())
+                                        ->reject(fn($case) => $case === PaymentMode::Credit_Loan) // Exclude the 'Credit_Loan' enum case
+                                        ->mapWithKeys(fn($case) => [$case->value => ucwords(str_replace('_', ' ', $case->value))])
+                                )
                                 ->searchable()
                                 ->required(),
                             Select::make('account_id')

@@ -12,5 +12,6 @@ enum PaymentMode: string
     case Credit_or_Debit_Card = "Credit or Debit Card";
     case Mobile_Money = "Mobile Money (M-PESA/AIRTEL)";
     case Online_Payment_Gateway = "Online Payment Gateway";
+    case Credit_Loan = "Credited (Loan)";
 
 }

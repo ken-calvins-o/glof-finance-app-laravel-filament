@@ -33,13 +33,18 @@ class Payable extends Model
 
     public static function getAccountSums($accountId)
     {
-        $data = AccountUser::where('account_id', $accountId)
-            ->selectRaw('SUM(amount_contributed) as total_contributed, SUM(amount_due) as total_due')
+        // Sum `amount_contributed` from the Receivable model
+        $receivablesData = Receivable::where('account_id', $accountId)
+            ->selectRaw('SUM(amount_contributed) as total_contributed')
             ->first();
 
+        // Sum `amount_due` from the AccountUser model for all records related to the given account_id
+        $totalDue = AccountUser::where('account_id', $accountId) // Ensure filtering by `account_id`
+        ->sum('amount_due'); // Accumulate `amount_due`
+
         return [
-            'total_due' => $data->total_due ?? 0,
-            'total_contributed' => $data->total_contributed ?? 0,
+            'total_due' => $totalDue ?? 0, // Total accumulated `amount_due` from AccountUser
+            'total_contributed' => $receivablesData->total_contributed ?? 0, // Total from Receivables
         ];
     }
 
