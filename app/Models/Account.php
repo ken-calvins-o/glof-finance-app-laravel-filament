@@ -27,11 +27,6 @@ class Account extends Model
         'frequency_type' => FrequencyTypeEnum::class,
     ];
 
-    public function accountUsers(): HasMany
-    {
-        return $this->hasMany(AccountUser::class, 'account_id', 'id');
-    }
-
     public function contributions(): HasMany
     {
         return $this->hasMany(Contribution::class);
@@ -48,8 +43,6 @@ class Account extends Model
             ->using(AccountUser::class) // Specify the pivot model
             ->withPivot([
                 'amount_due',
-                'outstanding_balance',
-                'status',
             ]);
     }
 
@@ -122,13 +115,12 @@ class Account extends Model
                         ->visible(fn ($state) => $state['is_general']),
                     Fieldset::make('Custom Account Details')
                         ->schema([
-                            Repeater::make('accountUsers')
-                                ->relationship('accountUsers')
+                            Repeater::make('users')
                                 ->visible(fn () => true)
                                 ->schema([
                                     Select::make('user_id')
                                         ->label('Member')
-                                        ->relationship('user', 'name')
+                                        ->options(User::query()->pluck('name', 'id')) // Fetch users manually
                                         ->searchable()
                                         ->preload()
                                         ->required()

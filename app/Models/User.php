@@ -72,8 +72,6 @@ class User extends Authenticatable
             ->using(AccountUser::class) // Specify the pivot model
             ->withPivot([
                 'amount_due',
-                'outstanding_balance',
-                'status',
             ]);
     }
 

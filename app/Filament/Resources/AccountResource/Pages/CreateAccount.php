@@ -24,11 +24,11 @@ class CreateAccount extends CreateRecord
     protected function handleRecordCreation(array $data): Account
     {
         return DB::transaction(function () use ($data) {
-            // Extract and remove 'accountUsers' from input data
-            $accountUsersData = $data['accountUsers'] ?? [];
-            unset($data['accountUsers']);
+            // Extract the repeater data from `users`
+            $customUsersData = $data['users'] ?? [];
+            unset($data['users']);
 
-            // Create the main Account record
+            // Create the `Account` record
             $account = Account::create([
                 'name' => $data['name'],
                 'frequency_type' => $data['frequency_type'],
@@ -37,50 +37,41 @@ class CreateAccount extends CreateRecord
                 'billing_type' => $data['billing_type'],
             ]);
 
-            // Handle user associations based on account type
             if ($data['is_general']) {
-                // General Account: Associate all users with a fixed `amount_due`
+                // General Account: Attach all users globally with a common `amount_due`
                 $amountDue = $data['amount_due'] ?? 0;
                 User::all()->each(function ($user) use ($account, $amountDue) {
-                    AccountUser::create([
-                        'account_id' => $account->id,
-                        'user_id' => $user->id,
-                        'amount_due' => $amountDue,
-                    ]);
+                    // Insert into the `account_user` pivot table
+                    $account->users()->attach($user->id, ['amount_due' => $amountDue]);
 
-                    // Create Debt for each user (general accounts)
+                    // Create associated debts for the user
                     Debt::create([
                         'account_id' => $account->id,
                         'user_id' => $user->id,
                         'outstanding_balance' => $amountDue,
                     ]);
 
-                    // Update Savings for each user (general accounts)
+                    // Update savings for the user
                     $this->updateSavings($user->id, $amountDue);
                 });
             } else {
-                // Custom Account: Handle users and their debts and savings
-                foreach ($accountUsersData as $accountUser) {
-                    if (isset($accountUser['user_id'], $accountUser['amount_due'])) {
-                        // Create AccountUser record for the user
-                        AccountUser::create([
-                            'account_id' => $account->id,
-                            'user_id' => $accountUser['user_id'],
-                            'amount_due' => $accountUser['amount_due'],
+                // Custom Account: Process each user manually from the repeater data
+                foreach ($customUsersData as $customUser) {
+                    if (isset($customUser['user_id'], $customUser['amount_due'])) {
+                        // Insert into the `account_user` pivot table
+                        $account->users()->attach($customUser['user_id'], [
+                            'amount_due' => $customUser['amount_due']
                         ]);
 
-                        // Create Debt for the user
+                        // Create associated debts for the user
                         Debt::create([
                             'account_id' => $account->id,
-                            'user_id' => $accountUser['user_id'],
-                            'outstanding_balance' => $accountUser['amount_due'],
+                            'user_id' => $customUser['user_id'],
+                            'outstanding_balance' => $customUser['amount_due'],
                         ]);
 
-                        // Update or create a Saving record for the user
-                        $this->updateSavings(
-                            $accountUser['user_id'],
-                            $accountUser['amount_due']
-                        );
+                        // Update savings for the user
+                        $this->updateSavings($customUser['user_id'], $customUser['amount_due']);
                     }
                 }
             }
@@ -88,7 +79,6 @@ class CreateAccount extends CreateRecord
             return $account;
         });
     }
-
     /**
      * Assign Debts and process savings for all users associated with the account.
      *
