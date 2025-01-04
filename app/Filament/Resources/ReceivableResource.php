@@ -86,7 +86,7 @@ class ReceivableResource extends Resource
         return [
             'index' => Pages\ListReceivables::route('/'),
             'create' => Pages\CreateReceivable::route('/create'),
-            'edit' => Pages\EditReceivable::route('/{record}/edit'),
+//            'edit' => Pages\EditReceivable::route('/{record}/edit'),
         ];
     }
 }

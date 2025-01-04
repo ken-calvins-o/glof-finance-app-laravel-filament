@@ -95,7 +95,6 @@ class SavingResource extends Resource
                 NumberFilter::make('net_worth')->debounce(700)
             ])
             ->actions([
-                Tables\Actions\EditAction::make(),
             ])
             ->bulkActions([
                 Tables\Actions\BulkActionGroup::make([
@@ -107,7 +106,6 @@ class SavingResource extends Resource
                             ->askForFilename()
                             ->except('avatar'),
                     ]),
-                    Tables\Actions\DeleteBulkAction::make(),
                 ]),
             ]);
     }
@@ -132,7 +130,7 @@ class SavingResource extends Resource
         return [
             'index' => Pages\ListSavings::route('/'),
             'create' => Pages\CreateSaving::route('/create'),
-            'edit' => Pages\EditSaving::route('/{record}/edit'),
+//            'edit' => Pages\EditSaving::route('/{record}/edit'),
         ];
     }
 }
