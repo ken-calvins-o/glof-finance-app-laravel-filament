@@ -2,9 +2,11 @@
 
 namespace App\Models;
 
+use Filament\Forms\Components\Fieldset;
 use Filament\Forms\Components\Section;
 use Filament\Forms\Components\Select;
 use Filament\Forms\Components\TextInput;
+use Filament\Forms\Components\ToggleButtons;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
@@ -13,6 +15,7 @@ class Payable extends Model
     protected $casts = [
         'id' => 'integer',
         'account_id' => 'integer',
+        'from_savings' => 'boolean',
     ];
 
     public function account(): BelongsTo
@@ -53,29 +56,42 @@ class Payable extends Model
         return [
             Section::make('Payable Details')
                 ->schema([
-                    Select::make('account_id')
-                        ->relationship('account', 'name')
-                        ->label('Account Name')
-                        ->searchable()
-                        ->preload()
-                        ->required()
-                        ->reactive()
-                        ->afterStateUpdated(function ($set, $state) {
-                            $sums = Payable::getAccountSums($state);
-                            $set('total_amount', $sums['total_due']);
-                            $set('total_raised', $sums['total_contributed']);
-                        }),
-                    TextInput::make('total_amount')
-                        ->label('Expected Budget')
-                        ->prefix('KES')
-                        ->readOnly(),
-                    TextInput::make('total_raised')
-                        ->label('Total Raised')
-                        ->prefix('KES')
-                        ->disabled()
-                        ->readOnly()
+                    Fieldset::make('Account Details')
+                        ->schema([
+                            Select::make('account_id')
+                                ->relationship('account', 'name')
+                                ->label('Account Name')
+                                ->searchable()
+                                ->preload()
+                                ->required()
+                                ->reactive()
+                                ->afterStateUpdated(function ($set, $state) {
+                                    $sums = Payable::getAccountSums($state);
+                                    $set('total_amount', $sums['total_due']);
+                                    $set('total_raised', $sums['total_contributed']);
+                                }),
+                            TextInput::make('total_amount')
+                                ->label('Expected Budget')
+                                ->prefix('KES')
+                                ->readOnly(),
+                            TextInput::make('total_raised')
+                                ->label('Total Raised')
+                                ->prefix('KES')
+                                ->disabled()
+                                ->readOnly(),
+                        ])
+                        ->columns(3),
+                    Fieldset::make('Payment Mode')
+                        ->schema([
+                            ToggleButtons::make('from_savings')
+                                ->boolean()
+                                ->label('Do you want to debit the outstanding balance of the associated members from their savings account?')
+                                ->default(false)
+                                ->inline()
+                                ->grouped()
+                                ->columnSpanFull(),
+                        ]),
                 ])
-                ->columns(3)
                 ->columnSpanFull(),
         ];
     }

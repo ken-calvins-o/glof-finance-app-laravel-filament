@@ -13,6 +13,7 @@ return new class extends Migration
             $table->id();
             $table->foreignId('account_id')->constrained();
             $table->decimal('total_amount', 10, 2);
+            $table->boolean('from_savings')->false;
             $table->timestamps();
         });
     }
