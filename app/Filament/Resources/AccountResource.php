@@ -63,13 +63,6 @@ class AccountResource extends Resource
                     ->getStateUsing(function (Account $record) {
                         return $record->users()->sum('account_user.amount_due');
                     }),
-//                Tables\Columns\TextColumn::make('total_contributed')
-//                    ->label('Total Raised')
-//                    ->prefix('KES ')
-//                    ->formatStateUsing(fn($state) => number_format($state, 2))
-//                    ->getStateUsing(function (Account $record) {
-//                        return $record->users()->sum('account_user.amount_contributed');
-//                    }),
                 Tables\Columns\TextColumn::make('created_at')
                     ->dateTime()
                     ->sortable()

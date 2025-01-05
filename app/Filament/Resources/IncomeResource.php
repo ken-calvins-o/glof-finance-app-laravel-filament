@@ -63,8 +63,14 @@ class IncomeResource extends Resource
                     ->prefix('KES ')
                     ->formatStateUsing(fn($state) => number_format($state, 2))
                     ->numeric()
-                    ->sortable(),
-
+                    ->sortable()
+                    ->toggleable(isToggledHiddenByDefault: true),
+                TextColumn::make('income_amount')
+                    ->prefix('KES ')
+                    ->formatStateUsing(fn($state) => number_format($state ?? 0.00, 2)) // Use 0.00 if $state is empty
+                    ->numeric()
+                    ->sortable()
+                    ->toggleable(isToggledHiddenByDefault: true),
                 TextColumn::make('origin')
                     ->searchable()
                     ->toggleable(isToggledHiddenByDefault: true),

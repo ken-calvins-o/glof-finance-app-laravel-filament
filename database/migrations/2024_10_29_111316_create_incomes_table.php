@@ -17,7 +17,8 @@ return new class extends Migration
             $table->foreignId('account_id')->nullable()->constrained('accounts')->onDelete('cascade');
             $table->foreignId('source')->nullable();
             $table->string('origin')->nullable();
-            $table->decimal('interest_amount', 10, 2);
+            $table->string('income_amount')->nullable();
+            $table->decimal('interest_amount', 10, 2)->default(0.00);
             $table->string('description')->nullable();
             $table->timestamps();
         });

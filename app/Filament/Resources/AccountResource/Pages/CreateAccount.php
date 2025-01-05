@@ -7,6 +7,7 @@ use App\Models\Account;
 use App\Models\User;
 use App\Models\Debt;
 use App\Models\Saving;
+use App\Models\Income; // Import the Income model
 use Illuminate\Support\Facades\DB;
 use Filament\Resources\Pages\CreateRecord;
 
@@ -35,6 +36,11 @@ class CreateAccount extends CreateRecord
                 $this->processGeneralAccount($account, $data['amount_due'] ?? 0);
             } else {
                 $this->processCustomAccount($account, $customUsersData);
+            }
+
+            // If create_income is true, create Income records
+            if ($account->create_income) {
+                $this->createIncomesForAccount($account, $data['amount_due']);
             }
 
             return $account;
@@ -106,6 +112,28 @@ class CreateAccount extends CreateRecord
     }
 
     /**
+     * Create Income records for all account users.
+     *
+     * @param Account $account
+     * @param float $amountDue
+     * @return void
+     */
+    protected function createIncomesForAccount(Account $account, float $amountDue): void
+    {
+        // Fetch all users attached to the account
+        $users = $account->users()->get();
+
+        $users->each(function ($user) use ($account, $amountDue) {
+            // Create an Income record for each user
+            Income::create([
+                'account_id' => $account->id,
+                'user_id' => $user->id,
+                'income_amount' => $amountDue, // Pass the `amount_due` as the income amount
+            ]);
+        });
+    }
+
+    /**
      * Extract relevant account data for creation.
      *
      * @param array $data
@@ -114,7 +142,7 @@ class CreateAccount extends CreateRecord
     protected function extractAccountData(array $data): array
     {
         return collect($data)->only([
-            'name', 'frequency_type', 'description', 'is_general', 'billing_type'
+            'name', 'frequency_type', 'description', 'is_general', 'billing_type', 'create_income' // Include `create_income`
         ])->toArray();
     }
 

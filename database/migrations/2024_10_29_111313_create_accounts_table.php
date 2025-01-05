@@ -16,6 +16,7 @@ return new class extends Migration
             $table->id();
             $table->string('name');
             $table->boolean('is_general')->default(true);
+            $table->boolean('create_income')->default(true);
             $table->boolean('billing_type')->default(true);
             $table->string('frequency_type');
             $table->longText('description');

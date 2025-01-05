@@ -23,6 +23,7 @@ class Account extends Model
         'id' => 'integer',
         'is_general' => 'boolean',
         'billing_type' => 'boolean',
+        'create_income' => 'boolean',
         'description' => 'string',
         'frequency_type' => FrequencyTypeEnum::class,
     ];
@@ -75,6 +76,18 @@ class Account extends Model
                                 ->boolean()
                                 ->default(true)
                                 ->inline()
+                                ->grouped()
+                                ->reactive()
+                                ->columnSpanFull(),
+                        ]),
+                    Fieldset::make('Income Enablement')
+                        ->schema([
+                            ToggleButtons::make('create_income')
+                                ->label('Allow Income Generation')
+                                ->boolean()
+                                ->default(false)
+                                ->inline()
+                                ->helperText('This setting generates an income record for the linked member *')
                                 ->grouped()
                                 ->reactive()
                                 ->columnSpanFull(),
