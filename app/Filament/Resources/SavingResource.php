@@ -10,8 +10,10 @@ use Filament\Forms\Form;
 use Filament\Resources\Resource;
 use Filament\Tables;
 use Filament\Tables\Table;
+use Hugomyb\FilamentMediaAction\Tables\Actions\MediaAction;
 use pxlrbt\FilamentExcel\Actions\Tables\ExportBulkAction;
 use pxlrbt\FilamentExcel\Exports\ExcelExport;
+use Torgodly\Html2Media\Tables\Actions\Html2MediaAction;
 use Webbingbrasil\FilamentAdvancedFilter\Filters\DateFilter;
 use Webbingbrasil\FilamentAdvancedFilter\Filters\NumberFilter;
 
@@ -95,11 +97,11 @@ class SavingResource extends Resource
                 NumberFilter::make('net_worth')->debounce(700)
             ])
             ->actions([
+
             ])
             ->bulkActions([
                 Tables\Actions\BulkActionGroup::make([
                     ExportBulkAction::make()->exports([
-                        // Pass a string
                         ExcelExport::make()
                             ->withFilename(date('Y-m-d') . ' - Statements')
                             ->fromTable()

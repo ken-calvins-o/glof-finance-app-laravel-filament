@@ -46,6 +46,8 @@ class PayableResource extends Resource
                     ->searchable()
                     ->sortable(),
                 TextColumn::make('total_amount')
+                    ->prefix('KES ')
+                    ->formatStateUsing(fn($state) => number_format($state, 2))
                     ->numeric()
                     ->sortable(),
                 TextColumn::make('created_at')

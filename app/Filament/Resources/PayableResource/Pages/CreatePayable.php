@@ -77,7 +77,7 @@ class CreatePayable extends CreateRecord
                         // Reduce the net worth by the interest amount only and create a Saving record
                         Saving::create([
                             'user_id' => $userId,
-                            'debit_amount' => $deficit + $interestAmount, // Record the total deficit as a debit
+                            'debit_amount' => $interestAmount, // Record the total deficit as a debit
                             'net_worth' => $currentNetWorth - $interestAmount, // Deduct only the interest amount
                             'balance' => $currentBalance, // Balance remains unchanged
                         ]);

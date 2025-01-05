@@ -4,6 +4,7 @@ namespace App\Providers\Filament;
 
 use App\Filament\Resources\DebtResource;
 use Awcodes\FilamentQuickCreate\QuickCreatePlugin;
+use CharrafiMed\GlobalSearchModal\GlobalSearchModalPlugin;
 use Filament\Http\Middleware\Authenticate;
 use Filament\Http\Middleware\DisableBladeIconComponents;
 use Filament\Http\Middleware\DispatchServingFilamentEvent;
@@ -21,6 +22,7 @@ use Illuminate\Session\Middleware\AuthenticateSession;
 use Illuminate\Session\Middleware\StartSession;
 use Illuminate\Support\Facades\Blade;
 use Illuminate\View\Middleware\ShareErrorsFromSession;
+use pxlrbt\FilamentSpotlight\SpotlightPlugin;
 
 class AppPanelProvider extends PanelProvider
 {
@@ -46,6 +48,8 @@ class AppPanelProvider extends PanelProvider
                 QuickCreatePlugin::make()
                     ->alwaysShowModal()
                     ->excludes([DebtResource::class]),
+                SpotlightPlugin::make(),
+                GlobalSearchModalPlugin::make(),
             ])
             ->discoverWidgets(in: app_path('Filament/Widgets'), for: 'App\\Filament\\Widgets')
             ->widgets([
