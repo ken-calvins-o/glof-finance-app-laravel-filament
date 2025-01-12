@@ -51,6 +51,7 @@ class Loan extends Model
                         ->required(),
                     TextInput::make('amount')
                         ->required()
+                        ->numeric()
                         ->label('Amount Requested')
                         ->hintIcon('heroicon-o-currency-dollar')
                         ->prefix('KES')
@@ -65,7 +66,6 @@ class Loan extends Model
                         ->maxLength(255)
                         ->readonly()  // Makes it read-only but included in form submission
                         ->reactive(),
-
                     TextInput::make('interest')
                         ->label('Percentage per month')
                         ->suffix('%')

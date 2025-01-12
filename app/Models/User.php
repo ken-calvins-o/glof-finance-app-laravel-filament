@@ -92,7 +92,6 @@ class User extends Authenticatable
                         ->maxLength(255)
                         ->prefixIcon('heroicon-o-user-circle'),
                     TextInput::make('email')
-                        ->required()
                         ->maxLength(255)
                         ->prefixIcon('heroicon-o-envelope')
                         ->rules(function ($get) {

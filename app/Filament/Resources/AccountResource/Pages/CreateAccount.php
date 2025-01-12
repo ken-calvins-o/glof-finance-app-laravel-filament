@@ -7,7 +7,7 @@ use App\Models\Account;
 use App\Models\User;
 use App\Models\Debt;
 use App\Models\Saving;
-use App\Models\Income; // Import the Income model
+use App\Models\Receivable; // Add Receivable model
 use Illuminate\Support\Facades\DB;
 use Filament\Resources\Pages\CreateRecord;
 
@@ -15,32 +15,24 @@ class CreateAccount extends CreateRecord
 {
     protected static string $resource = AccountResource::class;
 
-    /**
-     * Handle the record creation within a transaction for atomicity.
-     *
-     * @param array $data
-     * @return Account
-     */
     protected function handleRecordCreation(array $data): Account
     {
         return DB::transaction(function () use ($data) {
-            // Extract the repeater data from `users`
             $customUsersData = $data['users'] ?? [];
             unset($data['users']);
 
             // Create the `Account` record
             $account = Account::create($this->extractAccountData($data));
 
-            // Process either general or custom user logic
-            if ($data['is_general']) {
-                $this->processGeneralAccount($account, $data['amount_due'] ?? 0);
+            // Process data based on `billing_type`
+            if (!$data['billing_type']) {
+                $this->processBillingTypeFalse($account, $customUsersData);
             } else {
-                $this->processCustomAccount($account, $customUsersData);
-            }
-
-            // If create_income is true, create Income records
-            if ($account->create_income) {
-                $this->createIncomesForAccount($account, $data['amount_due']);
+                if ($data['is_general']) {
+                    $this->processGeneralAccount($account, $data['amount_due'] ?? 0);
+                } else {
+                    $this->processCustomAccount($account, $customUsersData);
+                }
             }
 
             return $account;
@@ -48,46 +40,130 @@ class CreateAccount extends CreateRecord
     }
 
     /**
-     * Process account creation for "General" type accounts.
-     *
-     * @param Account $account
-     * @param float $amountDue
-     * @return void
-     */
-    protected function processGeneralAccount(Account $account, float $amountDue): void
-    {
-        User::all()->each(function ($user) use ($account, $amountDue) {
-            $this->attachUserToAccount($account, $user->id, $amountDue);
-            $this->createDebt($account->id, $user->id, $amountDue);
-            $this->updateSavings($user->id, $amountDue);
-        });
-    }
-
-    /**
-     * Process account creation for "Custom" type accounts.
+     * Handle logic when billing_type is false.
      *
      * @param Account $account
      * @param array $customUsersData
-     * @return void
+     */
+    protected function processBillingTypeFalse(Account $account, array $customUsersData): void
+    {
+        $pivotData = [];
+
+        foreach ($customUsersData as $customUser) {
+            if (isset($customUser['user_id'], $customUser['amount_due'])) {
+                $userId = $customUser['user_id'];
+                $amountDue = $customUser['amount_due'];
+
+                // Create a Receivable record with the amount_due as the amount_contributed
+                $this->createReceivable($account->id, $userId, $amountDue);
+
+                // Update the user's Savings with the credit amount and adjusted net worth
+                $this->updateSavingsForBillingTypeFalse($userId, $amountDue);
+
+                // Add to the pivot data for attaching users
+                $pivotData[$userId] = ['amount_due' => $amountDue];
+            }
+        }
+
+        // Attach users to the pivot table
+        $account->users()->attach($pivotData);
+    }
+
+    /**
+     * Create a Receivable record for the user.
+     *
+     * @param int $accountId
+     * @param int $userId
+     * @param float $amountContributed
+     */
+    protected function createReceivable(int $accountId, int $userId, float $amountContributed): void
+    {
+        // Calculate the running total `amount_contributed` for the user in this account
+        $totalAmountContributed = Receivable::where('account_id', $accountId)
+                ->where('user_id', $userId)
+                ->sum('amount_contributed') + $amountContributed;
+
+        // Create the new receivable record
+        Receivable::create([
+            'account_id' => $accountId,
+            'user_id' => $userId,
+            'amount_contributed' => $amountContributed,
+            'total_amount_contributed' => $totalAmountContributed, // Store the calculated total
+        ]);
+    }
+
+    /**
+     * Update the Savings model for the user when billing_type is false.
+     *
+     * @param int $userId
+     * @param float $amountDue
+     */
+    protected function updateSavingsForBillingTypeFalse(int $userId, float $amountDue): void
+    {
+        $currentSaving = Saving::where('user_id', $userId)
+            ->lockForUpdate()
+            ->latest('id')
+            ->first();
+
+        $currentBalance = $currentSaving->balance ?? 0.00;
+        $currentDebitAmount = $currentSaving->debit_amount ?? 0.00;
+        $currentNetWorth = $currentSaving->net_worth ?? 0.00;
+
+        $newNetWorth = $currentNetWorth + $amountDue;
+
+        Saving::create([
+            'user_id' => $userId,
+            'credit_amount' => $amountDue,
+            'debit_amount' => $currentDebitAmount,
+            'balance' => $currentBalance,
+            'net_worth' => $newNetWorth,
+        ]);
+    }
+
+    /**
+     * General `is_general` handling when billing_type is true.
+     */
+    protected function processGeneralAccount(Account $account, float $amountDue): void
+    {
+        $pivotData = [];
+
+        User::all()->each(function ($user) use ($account, $amountDue, &$pivotData) {
+            $this->attachUserToAccount($account, $user->id, $amountDue);
+            $this->createDebt($account->id, $user->id, $amountDue);
+            $this->updateSavings($user->id, $amountDue);
+
+            // Add to pivot data
+            $pivotData[$user->id] = ['amount_due' => $amountDue];
+        });
+
+        // Attach all users to the pivot table
+        $account->users()->attach($pivotData);
+    }
+
+    /**
+     * Custom user handling for non-general accounts when billing_type is true.
      */
     protected function processCustomAccount(Account $account, array $customUsersData): void
     {
+        $pivotData = [];
+
         foreach ($customUsersData as $customUser) {
             if (isset($customUser['user_id'], $customUser['amount_due'])) {
                 $this->attachUserToAccount($account, $customUser['user_id'], $customUser['amount_due']);
                 $this->createDebt($account->id, $customUser['user_id'], $customUser['amount_due']);
                 $this->updateSavings($customUser['user_id'], $customUser['amount_due']);
+
+                // Add to pivot data
+                $pivotData[$customUser['user_id']] = ['amount_due' => $customUser['amount_due']];
             }
         }
+
+        // Attach all custom users to the pivot table
+        $account->users()->attach($pivotData);
     }
 
     /**
-     * Attach a user to an account in the pivot table.
-     *
-     * @param Account $account
-     * @param int $userId
-     * @param float $amountDue
-     * @return void
+     * Attach a user to an account in the pivot table with amount_due.
      */
     protected function attachUserToAccount(Account $account, int $userId, float $amountDue): void
     {
@@ -95,86 +171,12 @@ class CreateAccount extends CreateRecord
     }
 
     /**
-     * Create a Debt record for a user in an account.
-     *
-     * @param int $accountId
-     * @param int $userId
-     * @param float $amountDue
-     * @return void
-     */
-    protected function createDebt(int $accountId, int $userId, float $amountDue): void
-    {
-        Debt::create([
-            'account_id' => $accountId,
-            'user_id' => $userId,
-            'outstanding_balance' => $amountDue,
-        ]);
-    }
-
-    /**
-     * Create Income records for all account users.
-     *
-     * @param Account $account
-     * @param float $amountDue
-     * @return void
-     */
-    protected function createIncomesForAccount(Account $account, float $amountDue): void
-    {
-        // Fetch all users attached to the account
-        $users = $account->users()->get();
-
-        $users->each(function ($user) use ($account, $amountDue) {
-            // Create an Income record for each user
-            Income::create([
-                'account_id' => $account->id,
-                'user_id' => $user->id,
-                'income_amount' => $amountDue, // Pass the `amount_due` as the income amount
-            ]);
-        });
-    }
-
-    /**
-     * Extract relevant account data for creation.
-     *
-     * @param array $data
-     * @return array
+     * Extract account data.
      */
     protected function extractAccountData(array $data): array
     {
         return collect($data)->only([
-            'name', 'frequency_type', 'description', 'is_general', 'billing_type', 'create_income' // Include `create_income`
+            'name', 'frequency_type', 'description', 'is_general', 'billing_type', 'create_income'
         ])->toArray();
-    }
-
-    /**
-     * Update Savings and net worth for a specific user.
-     *
-     * @param int $userId
-     * @param float $amountDue
-     * @return void
-     */
-    protected function updateSavings(int $userId, float $amountDue): void
-    {
-        // Fetch the user's latest savings record with a lock for concurrency safety
-        $currentSaving = Saving::where('user_id', $userId)
-            ->lockForUpdate()
-            ->latest('id')
-            ->first();
-
-        // Default the balance and net worth if no previous savings record exists
-        $currentBalance = $currentSaving->balance ?? 0.00;
-        $currentNetWorth = $currentSaving->net_worth ?? 0.00;
-
-        // Perform calculations for the new savings record
-        $newNetWorth = $currentNetWorth - $amountDue;
-
-        // Create new Saving record
-        Saving::create([
-            'user_id' => $userId,
-            'credit_amount' => 0, // No credit for this flow
-            'debit_amount' => $amountDue,
-            'balance' => $currentBalance,
-            'net_worth' => $newNetWorth,
-        ]);
     }
 }

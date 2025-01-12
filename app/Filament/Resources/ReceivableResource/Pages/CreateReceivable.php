@@ -148,10 +148,10 @@ class CreateReceivable extends CreateRecord
         if (!$fromSavings) {
             $newNetWorth += $amountContributed;
         }
-
-        if ($newBalance < 0) {
-            throw new \Exception("Insufficient balance in savings for user ID: {$userId}. Current Balance: {$currentBalance}, Attempted Debit Amount: {$amountContributed}.");
-        }
+//
+//        if ($newBalance < 0) {
+//            throw new \Exception("Insufficient balance in savings for user ID: {$userId}. Current Balance: {$currentBalance}, Attempted Debit Amount: {$amountContributed}.");
+//        }
 
         Saving::create([
             'user_id' => $userId,

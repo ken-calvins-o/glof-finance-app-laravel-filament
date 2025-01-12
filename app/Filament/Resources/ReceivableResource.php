@@ -10,6 +10,10 @@ use Filament\Forms\Form;
 use Filament\Resources\Resource;
 use Filament\Tables;
 use Filament\Tables\Table;
+use pxlrbt\FilamentExcel\Actions\Tables\ExportBulkAction;
+use pxlrbt\FilamentExcel\Exports\ExcelExport;
+use Webbingbrasil\FilamentAdvancedFilter\Filters\DateFilter;
+use Webbingbrasil\FilamentAdvancedFilter\Filters\NumberFilter;
 
 class ReceivableResource extends Resource
 {
@@ -54,21 +58,40 @@ class ReceivableResource extends Resource
                     ->sortable()
                     ->searchable(),
                 Tables\Columns\TextColumn::make('amount_contributed')
-                    ->label('Amount Contributed')
+                    ->sortable()
+                    ->formatStateUsing(fn($state) => 'KES ' . number_format($state, 2)),
+                Tables\Columns\TextColumn::make('total_amount_contributed')
+                    ->label('Total Amount Contributed')
                     ->sortable()
                     ->formatStateUsing(fn($state) => 'KES ' . number_format($state, 2)),
                 Tables\Columns\TextColumn::make('payment_method')
                     ->sortable()
                     ->searchable(),
+                Tables\Columns\TextColumn::make('created_at')
+                    ->dateTime()
+                    ->sortable()
+                    ->toggleable(isToggledHiddenByDefault: true),
+                Tables\Columns\TextColumn::make('updated_at')
+                    ->dateTime()
+                    ->sortable()
+                    ->toggleable(isToggledHiddenByDefault: true),
             ])
             ->filters([
-                //
+                DateFilter::make('created_at')->debounce(700),
+                NumberFilter::make('net_worth')->debounce(700)
             ])
             ->actions([
                 Tables\Actions\EditAction::make(),
             ])
             ->bulkActions([
                 Tables\Actions\BulkActionGroup::make([
+                    ExportBulkAction::make()->exports([
+                        ExcelExport::make()
+                            ->withFilename(date('Y-m-d') . ' - Statements')
+                            ->fromTable()
+                            ->askForFilename()
+                            ->except('avatar'),
+                    ]),
                     Tables\Actions\DeleteBulkAction::make(),
                 ]),
             ]);

@@ -5,6 +5,7 @@ namespace App\Filament\Resources;
 use App\Filament\Resources\AccountResource\Pages;
 use App\Filament\Resources\AccountResource\RelationManagers;
 use App\Models\Account;
+use App\Models\Receivable;
 use Filament\Forms;
 use Filament\Forms\Form;
 use Filament\Resources\Resource;
@@ -12,6 +13,7 @@ use Filament\Support\Colors\Color;
 use Filament\Tables;
 use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\SoftDeletingScope;
 
 class AccountResource extends Resource
@@ -57,11 +59,13 @@ class AccountResource extends Resource
                     ->badge()
                     ->getStateUsing(fn(Account $record) => $record->users()->count()),
                 Tables\Columns\TextColumn::make('budget')
+                    ->label('Total Amount')
                     ->prefix('KES ')
                     ->formatStateUsing(fn($state) => number_format($state, 2))
                     ->color(fn($record) => !$record->is_general ? Color::Green : null) // Set badge color to green for custom accounts
-                    ->getStateUsing(function (Account $record) {
-                        return $record->users()->sum('account_user.amount_due');
+                    ->getStateUsing(function (Model $record) {
+                        // Sum the `amount_contributed` field from the Receivable model for this account
+                        return Receivable::where('account_id', $record->id)->sum('amount_contributed');
                     }),
                 Tables\Columns\TextColumn::make('created_at')
                     ->dateTime()

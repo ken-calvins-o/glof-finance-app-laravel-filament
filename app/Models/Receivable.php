@@ -41,11 +41,6 @@ class Receivable extends Model
     public static function getForm(): array
     {
         return [
-//            Shout::make('contribution_amount')
-//                ->type('warning')
-//                ->visible(fn(callable $get) => $get('outstanding_balance') < $get('amount_contributed'))
-//                ->content('The entered amount exceeds the outstanding balance 😬!')
-//                ->columnSpanFull(),
             Repeater::make('Members Receivable')
                 ->schema([
                     Fieldset::make('Receivable Details')

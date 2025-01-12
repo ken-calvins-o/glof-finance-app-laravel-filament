@@ -129,6 +129,7 @@ class Account extends Model
                     Fieldset::make('Custom Account Details')
                         ->schema([
                             Repeater::make('users')
+                                ->label('Select Members')
                                 ->visible(fn () => true)
                                 ->schema([
                                     Select::make('user_id')

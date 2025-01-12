@@ -21,6 +21,11 @@ class UserResource extends Resource
 
     protected static ?string $navigationGroup = 'Members\' Profile';
 
+    public static function getPluralLabel(): string
+    {
+        return 'Members'; // This changes the plural form displayed in the UI
+    }
+
     public static function getNavigationBadge(): ?string
     {
         return User::count();
