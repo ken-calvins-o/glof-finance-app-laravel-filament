@@ -49,9 +49,18 @@ class UserResource extends Resource
                     ->prefix('KES ')
                     ->formatStateUsing(fn($state) => number_format($state, 2))
                     ->searchable(),
+                Tables\Columns\TextColumn::make('member_status')
+                    ->label('Membership Status')
+                    ->badge()
+                    ->searchable()
+                    ->sortable()
+                    ->color(function ($state) {
+                        return $state->getColor();
+                    }),
                 Tables\Columns\TextColumn::make('email_verified_at')
                     ->dateTime()
-                    ->sortable(),
+                    ->sortable()
+                    ->toggleable(isToggledHiddenByDefault: true),
                 Tables\Columns\TextColumn::make('created_at')
                     ->dateTime()
                     ->sortable()

@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use App\Enums\FrequencyTypeEnum;
+use App\Enums\MemberStatus;
 use Filament\Forms\Components\Fieldset;
 use Filament\Forms\Components\Repeater;
 use Filament\Forms\Components\Section;
@@ -80,6 +81,26 @@ class Account extends Model
                                 ->reactive()
                                 ->columnSpanFull(),
                         ]),
+                    Fieldset::make('Exclude/Leave out members')
+                        ->schema([
+                            Fieldset::make('Exclude/Leave out members')
+                                ->schema([
+                                    Select::make('user_id')
+                                        ->label('Select Members')
+                                        ->multiple()
+                                        ->reactive()
+                                        ->options(
+                                            User::query()
+                                                ->where('member_status', MemberStatus::Active) // Filter users by active status
+                                                ->pluck('name', 'id')
+                                                ->toArray() // Fetch `name` and `id` as key-value pairs
+                                        )
+                                        ->minItems(1)
+                                        ->maxItems(5),
+                                ])
+                                ->visible(fn($state) => $state['is_general']),
+                        ])
+                        ->visible(fn($state) => $state['is_general']),
                     Fieldset::make('Income Enablement')
                         ->schema([
                             ToggleButtons::make('create_income')
@@ -125,16 +146,18 @@ class Account extends Model
                                 ->prefix('KES')
                                 ->disabled(),
                         ])
-                        ->visible(fn ($state) => $state['is_general']),
+                        ->visible(fn($state) => $state['is_general']),
                     Fieldset::make('Custom Account Details')
                         ->schema([
                             Repeater::make('users')
                                 ->label('Select Members')
-                                ->visible(fn () => true)
+                                ->visible(fn() => true)
                                 ->schema([
                                     Select::make('user_id')
                                         ->label('Member')
-                                        ->options(User::query()->pluck('name', 'id')) // Fetch users manually
+                                        ->options(User::query()
+                                            ->where('member_status', MemberStatus::Active) // Filter users by active status
+                                            ->pluck('name', 'id')) // Fetch users manually
                                         ->searchable()
                                         ->preload()
                                         ->required()
@@ -162,7 +185,7 @@ class Account extends Model
                                 ->createItemButtonLabel('Add More Details')
                                 ->columnSpanFull(),
                         ])
-                        ->visible(fn ($state) => !$state['is_general']),
+                        ->visible(fn($state) => !$state['is_general']),
                 ]),
         ];
     }

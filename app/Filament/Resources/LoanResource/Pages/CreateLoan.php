@@ -24,14 +24,28 @@ class CreateLoan extends CreateRecord
     {
         // Use a database transaction to ensure atomicity for the entire process
         return DB::transaction(function () use ($data) {
+            // Set default values for interest and balance based on `apply_interest`
+            $interestAmount = 0;
+            $balance = $data['amount']; // Default balance is the loan amount
+
+            if ($data['apply_interest']) {
+                // Calculate the interest as 1% of the loan amount
+                $interestAmount = $data['amount'] * 0.01;
+
+                // Add the interest to the balance
+                $balance += $interestAmount;
+            }
+
             // Create the loan record in the database
-            $loan = static::getModel()::create($data);
+            $loan = static::getModel()::create(array_merge($data, [
+                'balance' => $balance, // Apply the calculated balance
+                'interest' => $interestAmount, // Save the interest
+            ]));
 
-            // Calculate the interest amount as 1% of the loan amount
-            $interestAmount = $loan->amount * 0.01;
-
-            // Create a new Income record for the loan interest
-            $this->createIncomeRecord($loan->user_id, $interestAmount);
+            // Create a new Income record for the loan interest only if `apply_interest` is true
+            if ($interestAmount > 0) {
+                $this->createIncomeRecord($loan->user_id, $interestAmount);
+            }
 
             // Retrieve the current Saving record to derive net worth and balance
             $currentSaving = Saving::where('user_id', $loan->user_id)->first();
@@ -74,11 +88,17 @@ class CreateLoan extends CreateRecord
      */
     private function createSavingRecord(Loan $loan, float $currentNetWorth, float $currentBalance): void
     {
+        // Determine the credit amount based on interest application
+        $creditAmount = $loan->apply_interest ? $loan->amount + $loan->interest : $loan->amount;
+
+        // Calculate the net worth strictly by subtracting the credit amount
+        $newNetWorth = $currentNetWorth - $creditAmount;
+
         Saving::create([
             'user_id' => $loan->user_id,
             'credit_amount' => $loan->amount, // Credit the loan amount
             'debit_amount' => 0, // No debit in this transaction
-            'net_worth' => $currentNetWorth - $loan->balance, // Adjust net worth by reducing loan balance
+            'net_worth' => $newNetWorth, // Adjust net worth strictly
             'balance' => $currentBalance, // Preserve the current balance
         ]);
     }

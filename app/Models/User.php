@@ -3,10 +3,13 @@
 namespace App\Models;
 
 // use Illuminate\Contracts\Auth\MustVerifyEmail;
+use App\Enums\MemberStatus;
 use App\Enums\RoleEnum;
+use Filament\Forms\Components\Fieldset;
 use Filament\Forms\Components\Section;
 use Filament\Forms\Components\Select;
 use Filament\Forms\Components\TextInput;
+use Filament\Forms\Components\ToggleButtons;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
@@ -52,16 +55,17 @@ class User extends Authenticatable
             'registration_fee' => 'decimal:2',
             'email_verified_at' => 'datetime',
             'password' => 'hashed',
+            'member_status' => MemberStatus::class,
             'role' => RoleEnum::class,
         ];
     }
 
-    public function debts():HasMany
+    public function debts(): HasMany
     {
         return $this->hasMany(Debt::class);
     }
 
-    public function savings():HasMany
+    public function savings(): HasMany
     {
         return $this->hasMany(Saving::class);
     }
@@ -96,16 +100,14 @@ class User extends Authenticatable
                         ->prefixIcon('heroicon-o-envelope')
                         ->rules(function ($get) {
                             return [
-                                'required',
                                 'string',
                                 Rule::unique('users', 'email')->ignore($get('id')), // Ignore uniqueness validation for the current record's ID
                             ];
-                        })
-                        ->required(),
+                        }),
                     PhoneInput::make('phone'),
                     Select::make('role')
                         ->enum(RoleEnum::class)
-                        ->default(RoleEnum::Administrator)
+                        ->default(RoleEnum::Member)
                         ->options(collect(RoleEnum::cases())->mapWithKeys(function ($case) {
                             return [$case->value => ucwords(str_replace(' ', ' ', $case->value))];  // Formats the labels
                         }))
@@ -122,8 +124,17 @@ class User extends Authenticatable
                         ->dehydrateStateUsing(fn(?string $state): ?string => filled($state) ? Hash::make($state) : null)
                         ->dehydrated(fn(?string $state): bool => filled($state))
                         ->label('Password')
-                        ->required(fn(string $context): bool => $context === 'create')
-                        ->visible(fn(string $context): bool => $context === 'create')
+                        ->visible(fn(string $context): bool => $context === 'create'),
+                    Fieldset::make('Member Status')
+                        ->schema([
+                            Select::make('member_status')
+                                ->enum(MemberStatus::class)
+                                ->default(MemberStatus::Active)
+                                ->options(collect(MemberStatus::cases())->mapWithKeys(function ($case) {
+                                    return [$case->value => ucwords(str_replace('_', ' ', $case->value))];
+                                }))
+                                ->required(),
+                        ]),
                 ]),
         ];
     }

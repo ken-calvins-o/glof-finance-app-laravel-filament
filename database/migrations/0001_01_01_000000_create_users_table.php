@@ -4,6 +4,7 @@ use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Schema;
 use App\Enums\RoleEnum;
+use App\Enums\MemberStatus;
 
 return new class extends Migration
 {
@@ -21,6 +22,7 @@ return new class extends Migration
             $table->string('password')->nullable();
             $table->string('role')->default(RoleEnum::Administrator);
             $table->decimal('registration_fee', 10, 2)->nullable();
+            $table->string('member_status')->default(MemberStatus::Active);
             $table->rememberToken();
             $table->timestamps();
         });

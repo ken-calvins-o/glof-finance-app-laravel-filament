@@ -7,7 +7,8 @@ use App\Models\Account;
 use App\Models\User;
 use App\Models\Debt;
 use App\Models\Saving;
-use App\Models\Receivable; // Add Receivable model
+use App\Models\Receivable;
+use App\Enums\DebtStatusEnum; // Import the DebtStatusEnum
 use Illuminate\Support\Facades\DB;
 use Filament\Resources\Pages\CreateRecord;
 
@@ -41,9 +42,6 @@ class CreateAccount extends CreateRecord
 
     /**
      * Handle logic when billing_type is false.
-     *
-     * @param Account $account
-     * @param array $customUsersData
      */
     protected function processBillingTypeFalse(Account $account, array $customUsersData): void
     {
@@ -71,10 +69,6 @@ class CreateAccount extends CreateRecord
 
     /**
      * Create a Receivable record for the user.
-     *
-     * @param int $accountId
-     * @param int $userId
-     * @param float $amountContributed
      */
     protected function createReceivable(int $accountId, int $userId, float $amountContributed): void
     {
@@ -94,9 +88,6 @@ class CreateAccount extends CreateRecord
 
     /**
      * Update the Savings model for the user when billing_type is false.
-     *
-     * @param int $userId
-     * @param float $amountDue
      */
     protected function updateSavingsForBillingTypeFalse(int $userId, float $amountDue): void
     {
@@ -123,20 +114,29 @@ class CreateAccount extends CreateRecord
     /**
      * General `is_general` handling when billing_type is true.
      */
+    /**
+     * General `is_general` handling when billing_type is true.
+     */
     protected function processGeneralAccount(Account $account, float $amountDue): void
     {
+        $excludedUserIds = request('user_id', []); // Get excluded user IDs from the request (fieldset input)
+
         $pivotData = [];
 
-        User::all()->each(function ($user) use ($account, $amountDue, &$pivotData) {
+        // Get users who are NOT in the excluded users list
+        User::whereNotIn('id', $excludedUserIds)->get()->each(function ($user) use ($account, $amountDue, &$pivotData) {
+            // Attach the user to the account
             $this->attachUserToAccount($account, $user->id, $amountDue);
+            // Create a debt record
             $this->createDebt($account->id, $user->id, $amountDue);
+            // Update the user's savings
             $this->updateSavings($user->id, $amountDue);
 
             // Add to pivot data
             $pivotData[$user->id] = ['amount_due' => $amountDue];
         });
 
-        // Attach all users to the pivot table
+        // Attach all filtered users to the pivot table
         $account->users()->attach($pivotData);
     }
 
@@ -171,12 +171,25 @@ class CreateAccount extends CreateRecord
     }
 
     /**
+     * Create a Debt record for a user.
+     */
+    protected function createDebt(int $accountId, int $userId, float $amount): void
+    {
+        Debt::create([
+            'account_id' => $accountId,
+            'user_id' => $userId,
+            'amount' => $amount,
+            'debt_status' => DebtStatusEnum::Pending, // Set debt_status to Pending
+        ]);
+    }
+
+    /**
      * Extract account data.
      */
     protected function extractAccountData(array $data): array
     {
         return collect($data)->only([
-            'name', 'frequency_type', 'description', 'is_general', 'billing_type', 'create_income'
+            'name', 'frequency_type', 'description', 'is_general', 'billing_type', 'create_income',
         ])->toArray();
     }
 }
