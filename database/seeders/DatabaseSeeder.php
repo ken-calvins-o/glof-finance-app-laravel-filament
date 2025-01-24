@@ -63,5 +63,9 @@ class DatabaseSeeder extends Seeder
                 'payment_method' => PaymentMode::Mobile_Money,
             ]);
         }
+        $this->call([
+            MonthSeeder::class,
+            YearSeeder::class,
+        ]);
     }
 }

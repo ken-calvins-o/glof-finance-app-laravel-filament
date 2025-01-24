@@ -13,6 +13,7 @@ use Filament\Forms\Components\TextInput;
 use Filament\Forms\Components\ToggleButtons;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
@@ -23,7 +24,6 @@ class Account extends Model
     protected $casts = [
         'id' => 'integer',
         'is_general' => 'boolean',
-        'billing_type' => 'boolean',
         'create_income' => 'boolean',
         'description' => 'string',
         'frequency_type' => FrequencyTypeEnum::class,
@@ -42,10 +42,12 @@ class Account extends Model
     public function users()
     {
         return $this->belongsToMany(User::class, 'account_user')
-            ->using(AccountUser::class) // Specify the pivot model
-            ->withPivot([
-                'amount_due',
-            ]);
+            ->using(AccountUser::class);
+    }
+    public function years(): BelongsToMany
+    {
+        return $this->belongsToMany(Year::class, 'account_year')
+            ->using(AccountYear::class);
     }
 
     public static function getForm(): array
@@ -73,8 +75,12 @@ class Account extends Model
                     Fieldset::make('Account Type')
                         ->schema([
                             ToggleButtons::make('is_general')
-                                ->label('Select No for a Custom Account')
+                                ->label('Account Type')
                                 ->boolean()
+                                ->options([
+                                    true => 'General',
+                                    false => 'Custom',
+                                ])
                                 ->default(true)
                                 ->inline()
                                 ->grouped()
@@ -95,10 +101,8 @@ class Account extends Model
                                                 ->pluck('name', 'id')
                                                 ->toArray() // Fetch `name` and `id` as key-value pairs
                                         )
-                                        ->minItems(1)
                                         ->maxItems(5),
                                 ])
-                                ->visible(fn($state) => $state['is_general']),
                         ])
                         ->visible(fn($state) => $state['is_general']),
                     Fieldset::make('Income Enablement')
@@ -113,22 +117,28 @@ class Account extends Model
                                 ->reactive()
                                 ->columnSpanFull(),
                         ]),
-                    Fieldset::make('Billing Account Type')
+                    Fieldset::make('Billing Type')
                         ->schema([
                             ToggleButtons::make('billing_type')
+                                ->label('Choose Billing Type')
                                 ->boolean()
-                                ->label('Select No for a Credit Account')
+                                ->options([
+                                    false => 'Credit',
+                                    true => 'Debit',
+                                ])
                                 ->default(true)
                                 ->inline()
                                 ->grouped()
                                 ->reactive()
                                 ->columnSpanFull(),
-                        ]),
+                        ])
+                        ->visible(fn($state) => $state['is_general']),
                     Fieldset::make('Cost Overview')
                         ->schema([
                             TextInput::make('amount_due')
-                                ->label('Amount Due Per Member')
+                                ->label('Amount Charged Per Member')
                                 ->required()
+                                ->minValue(1)
                                 ->numeric()
                                 ->hintIcon('heroicon-o-currency-dollar')
                                 ->prefix('KES')
@@ -153,33 +163,60 @@ class Account extends Model
                                 ->label('Select Members')
                                 ->visible(fn() => true)
                                 ->schema([
-                                    Select::make('user_id')
-                                        ->label('Member')
-                                        ->options(User::query()
-                                            ->where('member_status', MemberStatus::Active) // Filter users by active status
-                                            ->pluck('name', 'id')) // Fetch users manually
-                                        ->searchable()
-                                        ->preload()
-                                        ->required()
-                                        ->columnSpan(1),
-                                    TextInput::make('amount_due')
-                                        ->label('Amount Due Per Member')
-                                        ->required()
-                                        ->numeric()
-                                        ->hintIcon('heroicon-o-currency-dollar')
-                                        ->prefix('KES')
-                                        ->reactive()
-                                        ->debounce(500)
-                                        ->afterStateUpdated(function ($state, callable $set) {
-                                            // Set budget to the same value as amount_due directly for custom accounts
-                                            $set('budget', $state);
-                                        }),
-                                    TextInput::make('budget')
-                                        ->label('Estimated Group Budget')
-                                        ->numeric()
-                                        ->hintIcon('heroicon-o-currency-dollar')
-                                        ->prefix('KES')
-                                        ->disabled(), // Changed from `disabled()` to `readonly()`
+                                    Fieldset::make('Member Payment Information')
+                                        ->schema([
+                                            Select::make('user_id')
+                                                ->label('Member')
+                                                ->options(User::query()
+                                                    ->where('member_status', MemberStatus::Active) // Filter users by active status
+                                                    ->pluck('name', 'id')) // Fetch users manually
+                                                ->searchable()
+                                                ->preload()
+                                                ->required()
+                                                ->columnSpan(1),
+                                            TextInput::make('amount_due')
+                                                ->label('Amount')
+                                                ->required()
+                                                ->numeric()
+                                                ->minValue(1)
+                                                ->hintIcon('heroicon-o-currency-dollar')
+                                                ->prefix('KES')
+                                                ->reactive()
+                                                ->debounce(500)
+                                                ->afterStateUpdated(function ($state, callable $set) {
+                                                    // Set budget to the same value as amount_due directly for custom accounts
+                                                    $set('budget', $state);
+                                                }),
+                                        ]),
+                                    Fieldset::make('Billing Period & Account Type')
+                                        ->schema([
+                                            Select::make('month_id')
+                                                ->label('Month')
+                                                ->searchable()
+                                                ->preload()
+                                                ->required()
+                                                ->options(Month::all()->pluck('name', 'id')->toArray()) // Fetch months
+                                                ->default(Month::where('name', now()->format('F'))->value('id')), // Set the default to the current month's ID
+                                            Select::make('year_id')
+                                                ->label('Year')
+                                                ->searchable()
+                                                ->preload()
+                                                ->required()
+                                                ->options(Year::all()->pluck('year', 'id')->toArray()) // Fetch years
+                                                ->default(Year::where('year', now()->year)->value('id')), // Set the default to the current year's ID
+                                            ToggleButtons::make('billing_type')
+                                                ->label('Choose Billing Type')
+                                                ->boolean()
+                                                ->options([
+                                                    true => 'Debit',
+                                                    false => 'Credit',
+                                                ])
+                                                ->default(true)
+                                                ->inline()
+                                                ->grouped()
+                                                ->reactive(),
+                                        ])
+                                        ->columns(3),
                                 ])
                                 ->columns(3)
                                 ->createItemButtonLabel('Add More Details')

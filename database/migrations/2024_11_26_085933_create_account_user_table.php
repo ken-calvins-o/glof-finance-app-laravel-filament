@@ -16,7 +16,7 @@ return new class extends Migration
             $table->id();
             $table->foreignId('account_id')->constrained('accounts');
             $table->foreignId('user_id')->constrained('users');
-            $table->decimal('amount_due', 10, 2);
+            $table->boolean('billing_type');
             $table->timestamps();
         });
     }

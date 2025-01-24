@@ -3,8 +3,6 @@
 namespace App\Filament\Resources;
 
 use App\Filament\Resources\ReceivableResource\Pages;
-use App\Filament\Resources\ReceivableResource\RelationManagers;
-use App\Models\Debt;
 use App\Models\Receivable;
 use Filament\Forms\Form;
 use Filament\Resources\Resource;
@@ -14,6 +12,7 @@ use pxlrbt\FilamentExcel\Actions\Tables\ExportBulkAction;
 use pxlrbt\FilamentExcel\Exports\ExcelExport;
 use Webbingbrasil\FilamentAdvancedFilter\Filters\DateFilter;
 use Webbingbrasil\FilamentAdvancedFilter\Filters\NumberFilter;
+use Webbingbrasil\FilamentAdvancedFilter\Filters\TextFilter;
 
 class ReceivableResource extends Resource
 {
@@ -60,10 +59,14 @@ class ReceivableResource extends Resource
                 Tables\Columns\TextColumn::make('amount_contributed')
                     ->sortable()
                     ->formatStateUsing(fn($state) => 'KES ' . number_format($state, 2)),
-                Tables\Columns\TextColumn::make('total_amount_contributed')
-                    ->label('Total Amount Contributed')
-                    ->sortable()
-                    ->formatStateUsing(fn($state) => 'KES ' . number_format($state, 2)),
+                Tables\Columns\TextColumn::make('months')
+                    ->label('Recorded Month')
+                    ->getStateUsing(fn ($record) => $record->months->pluck('name')->implode(', ') ?? 'N/A')
+                    ->sortable(),
+                Tables\Columns\TextColumn::make('years')
+                    ->label('Recorded Year')
+                    ->getStateUsing(fn ($record) => $record->years->pluck('year')->implode(', ') ?? 'N/A')
+                    ->sortable(),
                 Tables\Columns\TextColumn::make('payment_method')
                     ->sortable()
                     ->searchable(),
@@ -77,6 +80,10 @@ class ReceivableResource extends Resource
                     ->toggleable(isToggledHiddenByDefault: true),
             ])
             ->filters([
+                TextFilter::make('user_id')
+                    ->relationship('user', 'name')
+                    ->debounce(700)
+                    ->label('Member Name'),
                 DateFilter::make('created_at')->debounce(700),
                 NumberFilter::make('net_worth')->debounce(700)
             ])

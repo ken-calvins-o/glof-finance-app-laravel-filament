@@ -2,13 +2,16 @@
 
 namespace App\Models;
 
+use App\Enums\MemberStatus;
 use Filament\Forms\Components\Fieldset;
+use Filament\Forms\Components\Repeater;
 use Filament\Forms\Components\Section;
 use Filament\Forms\Components\Select;
 use Filament\Forms\Components\TextInput;
 use Filament\Forms\Components\ToggleButtons;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 
 class Payable extends Model
 {
@@ -17,6 +20,18 @@ class Payable extends Model
         'account_id' => 'integer',
         'from_savings' => 'boolean',
     ];
+
+    public function months(): BelongsToMany
+    {
+        return $this->belongsToMany(Month::class, 'monthly_payable')
+            ->using(MonthlyPayable::class);
+    }
+
+    public function years(): BelongsToMany
+    {
+        return $this->belongsToMany(Year::class, 'payable_year')
+            ->using(PayableYear::class);
+    }
 
     public function account(): BelongsTo
     {
@@ -32,23 +47,6 @@ class Payable extends Model
     {
         return $this->belongsTo(AccountUser::class, 'user_id', 'user_id')
             ->where('account_id', $this->account_id);
-    }
-
-    public static function getAccountSums($accountId)
-    {
-        // Sum `amount_contributed` from the Receivable model
-        $receivablesData = Receivable::where('account_id', $accountId)
-            ->selectRaw('SUM(amount_contributed) as total_contributed')
-            ->first();
-
-        // Sum `amount_due` from the AccountUser model for all records related to the given account_id
-        $totalDue = AccountUser::where('account_id', $accountId) // Ensure filtering by `account_id`
-        ->sum('amount_due'); // Accumulate `amount_due`
-
-        return [
-            'total_due' => $totalDue ?? 0, // Total accumulated `amount_due` from AccountUser
-            'total_contributed' => $receivablesData->total_contributed ?? 0, // Total from Receivables
-        ];
     }
 
     public static function getForm()
@@ -70,17 +68,56 @@ class Payable extends Model
                                     $set('total_amount', $sums['total_due']);
                                     $set('total_raised', $sums['total_contributed']);
                                 }),
-                            TextInput::make('total_amount')
-                                ->label('Expected Budget')
-                                ->prefix('KES')
-                                ->readOnly(),
-                            TextInput::make('total_raised')
-                                ->label('Total Raised')
-                                ->prefix('KES')
-                                ->disabled()
-                                ->readOnly(),
+                            Select::make('month_id')
+                                ->label('Month')
+                                ->searchable()
+                                ->preload()
+                                ->required()
+                                ->options(Month::all()->pluck('name', 'id')->toArray()) // Fetch months
+                                ->default(Month::where('name', now()->format('F'))->value('id')), // Set the default to the current month's ID
+                            Select::make('year_id')
+                                ->label('Year')
+                                ->searchable()
+                                ->preload()
+                                ->required()
+                                ->options(Year::all()->pluck('year', 'id')->toArray()) // Fetch years
+                                ->default(Year::where('year', now()->year)->value('id')), // Set the default to the current year's ID
                         ])
                         ->columns(3),
+                    Fieldset::make('Debit Type')
+                        ->schema([
+                            ToggleButtons::make('is_general')
+                                ->label('Debit Type')
+                                ->boolean()
+                                ->options([
+                                    true => 'General',
+                                    false => 'Custom',
+                                ])
+                                ->default(true)
+                                ->inline()
+                                ->grouped()
+                                ->reactive()
+                                ->columnSpanFull(),
+                        ]),
+                    Fieldset::make('Exclude/Leave out members')
+                        ->schema([
+                            Fieldset::make('Exclude/Leave out members')
+                                ->schema([
+                                    Select::make('user_id')
+                                        ->label('Select Members')
+                                        ->multiple()
+                                        ->reactive()
+                                        ->options(
+                                            User::query()
+                                                ->where('member_status', MemberStatus::Active) // Filter users by active status
+                                                ->pluck('name', 'id')
+                                                ->toArray() // Fetch `name` and `id` as key-value pairs
+                                        )
+                                        ->maxItems(5),
+                                ])
+                                ->visible(fn($state) => $state['is_general']),
+                        ])
+                        ->visible(fn($state) => $state['is_general']),
                     Fieldset::make('Payment Mode')
                         ->schema([
                             ToggleButtons::make('from_savings')
@@ -90,9 +127,47 @@ class Payable extends Model
                                 ->inline()
                                 ->grouped()
                                 ->columnSpanFull(),
-                        ]),
+                        ])
+                        ->visible(fn($state) => $state['is_general']),
                 ])
                 ->columnSpanFull(),
+            Fieldset::make('Custom Debit')
+                ->schema([
+                    Repeater::make('users')
+                        ->label('Select Members')
+                        ->visible(fn() => true)
+                        ->schema([
+                            Fieldset::make('Member Payment Information')
+                                ->schema([
+                                    Select::make('user_id')
+                                        ->label('Member')
+                                        ->options(User::query()
+                                            ->where('member_status', MemberStatus::Active) // Filter users by active status
+                                            ->pluck('name', 'id')) // Fetch users manually
+                                        ->searchable()
+                                        ->preload()
+                                        ->required()
+                                        ->columnSpan(1),
+                                    TextInput::make('amount_due')
+                                        ->label('Debit Amount')
+                                        ->required()
+                                        ->numeric()
+                                        ->minValue(1)
+                                        ->hintIcon('heroicon-o-currency-dollar')
+                                        ->prefix('KES')
+                                        ->reactive()
+                                        ->debounce(500)
+                                        ->afterStateUpdated(function ($state, callable $set) {
+                                            // Set budget to the same value as amount_due directly for custom accounts
+                                            $set('budget', $state);
+                                        }),
+                                ]),
+                        ])
+                        ->columns(3)
+                        ->createItemButtonLabel('Add More Details')
+                        ->columnSpanFull(),
+                ])
+                ->visible(fn($state) => !$state['is_general']),
         ];
     }
 }

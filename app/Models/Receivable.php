@@ -11,6 +11,7 @@ use Filament\Forms\Components\TextInput;
 use Filament\Forms\Components\ToggleButtons;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 
 class Receivable extends Model
@@ -22,6 +23,30 @@ class Receivable extends Model
         'from_savings' => 'boolean',
         'payment_mode' => PaymentMode::class,
     ];
+
+    public function getMonthIdAttribute()
+    {
+        return $this->months()->pluck('months.id')->first(); // Explicitly specify 'months.id'
+    }
+
+    public function getYearIdAttribute()
+    {
+        return $this->years()->pluck('years.id')->first(); // Explicitly specify 'years.id'
+    }
+
+    public function months(): BelongsToMany
+    {
+        return $this->belongsToMany(Month::class, 'monthly_receivable')
+            ->using(MonthlyReceivable::class)
+            ->withPivot(['month_id']);
+    }
+
+    public function years(): BelongsToMany
+    {
+        return $this->belongsToMany(Year::class, 'receivable_year')
+            ->using(ReceivableYear::class)
+            ->withPivot(['year_id']);
+    }
 
     public function account(): BelongsTo
     {

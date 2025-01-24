@@ -73,10 +73,7 @@ class User extends Authenticatable
     public function accounts()
     {
         return $this->belongsToMany(Account::class, 'account_user')
-            ->using(AccountUser::class) // Specify the pivot model
-            ->withPivot([
-                'amount_due',
-            ]);
+            ->using(AccountUser::class);
     }
 
     public function receivables(): HasMany

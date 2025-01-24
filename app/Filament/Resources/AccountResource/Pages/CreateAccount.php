@@ -4,11 +4,11 @@ namespace App\Filament\Resources\AccountResource\Pages;
 
 use App\Filament\Resources\AccountResource;
 use App\Models\Account;
-use App\Models\User;
-use App\Models\Debt;
-use App\Models\Saving;
+use App\Models\MonthlyReceivable;
 use App\Models\Receivable;
-use App\Enums\DebtStatusEnum; // Import the DebtStatusEnum
+use App\Models\Debt;
+use App\Models\ReceivableYear;
+use App\Models\User;
 use Illuminate\Support\Facades\DB;
 use Filament\Resources\Pages\CreateRecord;
 
@@ -16,24 +16,29 @@ class CreateAccount extends CreateRecord
 {
     protected static string $resource = AccountResource::class;
 
+    /**
+     * Custom method to create the Account record.
+     */
     protected function handleRecordCreation(array $data): Account
     {
         return DB::transaction(function () use ($data) {
-            $customUsersData = $data['users'] ?? [];
-            unset($data['users']);
+            // Save the Account record
+            $account = Account::create([
+                'name' => $data['name'],
+                'frequency_type' => $data['frequency_type'],
+                'description' => $data['description'],
+                'is_general' => $data['is_general'],
+            ]);
 
-            // Create the `Account` record
-            $account = Account::create($this->extractAccountData($data));
+            // Use the provided month_id or fallback to the current month for general accounts
+            $monthId = $data['month_id'] ?? now()->format('Ym'); // A dynamic fallback for general accounts
+            $yearId = $data['year_id'] ?? now()->format('Y'); // A dynamic fallback for general accounts
 
-            // Process data based on `billing_type`
-            if (!$data['billing_type']) {
-                $this->processBillingTypeFalse($account, $customUsersData);
+            // Handle general or custom account logic
+            if ($data['is_general'] === true) {
+                $this->processGeneralAccount($account, $data['billing_type'], $data['amount_due'], $monthId, $yearId);
             } else {
-                if ($data['is_general']) {
-                    $this->processGeneralAccount($account, $data['amount_due'] ?? 0);
-                } else {
-                    $this->processCustomAccount($account, $customUsersData);
-                }
+                $this->processCustomAccount($account, $data['users'], $monthId, $yearId);
             }
 
             return $account;
@@ -41,155 +46,139 @@ class CreateAccount extends CreateRecord
     }
 
     /**
-     * Handle logic when billing_type is false.
+     * Process logic for general accounts when `is_general` is true.
      */
-    protected function processBillingTypeFalse(Account $account, array $customUsersData): void
+    protected function processGeneralAccount(Account $account, bool $billingType, float $amountDue, int $monthId, int $yearId): void
     {
-        $pivotData = [];
+        // Retrieve all users
+        $users = User::all();
 
+        foreach ($users as $user) {
+            // Save the user in the account_user pivot table
+            $account->users()->attach($user->id, ['billing_type' => $billingType]);
+
+            // Process receivable or debt based on billing_type
+            $this->processBillingType($account, $billingType, $user->id, $amountDue, $monthId, $yearId);
+        }
+    }
+
+    /**
+     * Process logic for custom accounts when `is_general` is false.
+     */
+    protected function processCustomAccount(Account $account, array $customUsersData, int $fallbackMonthId, int $fallbackYearId): void
+    {
         foreach ($customUsersData as $customUser) {
-            if (isset($customUser['user_id'], $customUser['amount_due'])) {
-                $userId = $customUser['user_id'];
-                $amountDue = $customUser['amount_due'];
+            if (
+                isset($customUser['user_id']) &&
+                isset($customUser['billing_type']) &&
+                isset($customUser['amount_due'])
+            ) {
+                // Use the month_id from the user data, or fallback to the provided month_id
+                $monthId = $customUser['month_id'] ?? $fallbackMonthId;
+                $yearId = $customUser['year_id'] ?? $fallbackYearId;
 
-                // Create a Receivable record with the amount_due as the amount_contributed
-                $this->createReceivable($account->id, $userId, $amountDue);
+                // Save the user in the account_user pivot table
+                $account->users()->attach($customUser['user_id'], [
+                    'billing_type' => $customUser['billing_type'],
+                ]);
 
-                // Update the user's Savings with the credit amount and adjusted net worth
-                $this->updateSavingsForBillingTypeFalse($userId, $amountDue);
-
-                // Add to the pivot data for attaching users
-                $pivotData[$userId] = ['amount_due' => $amountDue];
+                // Process receivable or debt based on billing_type
+                $this->processBillingType(
+                    $account,
+                    $customUser['billing_type'],
+                    $customUser['user_id'],
+                    $customUser['amount_due'],
+                    $monthId,
+                    $yearId,
+                );
             }
         }
-
-        // Attach users to the pivot table
-        $account->users()->attach($pivotData);
     }
 
     /**
-     * Create a Receivable record for the user.
+     * Process logic based on `billing_type`.
+     *
+     * @param Account $account
+     * @param bool $billingType
+     * @param int $userId
+     * @param float $amountDue
+     * @param int $monthId
      */
-    protected function createReceivable(int $accountId, int $userId, float $amountContributed): void
+    protected function processBillingType(Account $account, bool $billingType, int $userId, float $amountDue, int $monthId, int $yearId): void
     {
-        // Calculate the running total `amount_contributed` for the user in this account
-        $totalAmountContributed = Receivable::where('account_id', $accountId)
-                ->where('user_id', $userId)
-                ->sum('amount_contributed') + $amountContributed;
-
-        // Create the new receivable record
-        Receivable::create([
-            'account_id' => $accountId,
-            'user_id' => $userId,
-            'amount_contributed' => $amountContributed,
-            'total_amount_contributed' => $totalAmountContributed, // Store the calculated total
-        ]);
-    }
-
-    /**
-     * Update the Savings model for the user when billing_type is false.
-     */
-    protected function updateSavingsForBillingTypeFalse(int $userId, float $amountDue): void
-    {
-        $currentSaving = Saving::where('user_id', $userId)
-            ->lockForUpdate()
-            ->latest('id')
-            ->first();
-
-        $currentBalance = $currentSaving->balance ?? 0.00;
-        $currentDebitAmount = $currentSaving->debit_amount ?? 0.00;
-        $currentNetWorth = $currentSaving->net_worth ?? 0.00;
-
-        $newNetWorth = $currentNetWorth + $amountDue;
-
-        Saving::create([
-            'user_id' => $userId,
-            'credit_amount' => $amountDue,
-            'debit_amount' => $currentDebitAmount,
-            'balance' => $currentBalance,
-            'net_worth' => $newNetWorth,
-        ]);
-    }
-
-    /**
-     * General `is_general` handling when billing_type is true.
-     */
-    /**
-     * General `is_general` handling when billing_type is true.
-     */
-    protected function processGeneralAccount(Account $account, float $amountDue): void
-    {
-        $excludedUserIds = request('user_id', []); // Get excluded user IDs from the request (fieldset input)
-
-        $pivotData = [];
-
-        // Get users who are NOT in the excluded users list
-        User::whereNotIn('id', $excludedUserIds)->get()->each(function ($user) use ($account, $amountDue, &$pivotData) {
-            // Attach the user to the account
-            $this->attachUserToAccount($account, $user->id, $amountDue);
-            // Create a debt record
-            $this->createDebt($account->id, $user->id, $amountDue);
-            // Update the user's savings
-            $this->updateSavings($user->id, $amountDue);
-
-            // Add to pivot data
-            $pivotData[$user->id] = ['amount_due' => $amountDue];
-        });
-
-        // Attach all filtered users to the pivot table
-        $account->users()->attach($pivotData);
-    }
-
-    /**
-     * Custom user handling for non-general accounts when billing_type is true.
-     */
-    protected function processCustomAccount(Account $account, array $customUsersData): void
-    {
-        $pivotData = [];
-
-        foreach ($customUsersData as $customUser) {
-            if (isset($customUser['user_id'], $customUser['amount_due'])) {
-                $this->attachUserToAccount($account, $customUser['user_id'], $customUser['amount_due']);
-                $this->createDebt($account->id, $customUser['user_id'], $customUser['amount_due']);
-                $this->updateSavings($customUser['user_id'], $customUser['amount_due']);
-
-                // Add to pivot data
-                $pivotData[$customUser['user_id']] = ['amount_due' => $customUser['amount_due']];
-            }
+        if ($billingType === true) {
+            // Case: billing_type is true; this is a Debt.
+            $this->createDebt($account, $userId, $amountDue);
+        } else {
+            // Case: billing_type is false; this is a Receivable.
+            $this->createReceivable($account, $userId, $amountDue, $monthId, $yearId);
         }
+    }
 
-        // Attach all custom users to the pivot table
-        $account->users()->attach($pivotData);
+
+    /**
+     * Create a receivable record and its corresponding MonthlyReceivable record.
+     *
+     * @param Account $account
+     * @param int $userId
+     * @param float $amountDue
+     * @param int $monthId
+     */
+    protected function createReceivable(Account $account, int $userId, float $amountDue, int $monthId,int $yearId): void
+    {
+        // Create the Receivable record
+        $receivable = Receivable::create([
+            'account_id' => $account->id,
+            'user_id' => $userId,
+            'amount_contributed' => $amountDue,
+            'total_amount_contributed' => $this->getTotalAmountContributed($account->id, $userId, $amountDue),
+        ]);
+
+        // Create a MonthlyReceivable record linked to the Receivable
+        MonthlyReceivable::create([
+            'month_id' => $monthId,
+            'receivable_id' => $receivable->id,
+        ]);
+
+        ReceivableYear::create([
+            'year_id' => $yearId,
+            'receivable_id' => $receivable->id,
+        ]);
+
     }
 
     /**
-     * Attach a user to an account in the pivot table with amount_due.
+     * Create a debt record.
+     *
+     * @param Account $account
+     * @param int $userId
+     * @param float $amountDue
      */
-    protected function attachUserToAccount(Account $account, int $userId, float $amountDue): void
+    protected function createDebt(Account $account, int $userId, float $amountDue): void
     {
-        $account->users()->attach($userId, ['amount_due' => $amountDue]);
-    }
-
-    /**
-     * Create a Debt record for a user.
-     */
-    protected function createDebt(int $accountId, int $userId, float $amount): void
-    {
+        // Create a debt record
         Debt::create([
-            'account_id' => $accountId,
+            'account_id' => $account->id,
             'user_id' => $userId,
-            'amount' => $amount,
-            'debt_status' => DebtStatusEnum::Pending, // Set debt_status to Pending
+            'outstanding_balance' => $amountDue,
         ]);
     }
 
     /**
-     * Extract account data.
+     * Helper to calculate the total amount contributed by a user for a specific account.
+     *
+     * @param int $accountId
+     * @param int $userId
+     * @param float $currentContribution
+     * @return float
      */
-    protected function extractAccountData(array $data): array
+    protected function getTotalAmountContributed(int $accountId, int $userId, float $currentContribution): float
     {
-        return collect($data)->only([
-            'name', 'frequency_type', 'description', 'is_general', 'billing_type', 'create_income',
-        ])->toArray();
+        // Compute the sum of all previous contributions for the user in this account
+        $existingTotal = Receivable::where('account_id', $accountId)
+            ->where('user_id', $userId)
+            ->sum('amount_contributed');
+
+        return $existingTotal + $currentContribution;
     }
 }

@@ -3,7 +3,6 @@
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Schema;
-use App\Enums\PaymentStatusEnum;
 
 return new class extends Migration
 {
@@ -12,13 +11,11 @@ return new class extends Migration
      */
     public function up(): void
     {
-        Schema::create('accounts', function (Blueprint $table) {
+        Schema::create('payable_year', function (Blueprint $table) {
             $table->id();
-            $table->string('name');
-            $table->boolean('create_income')->default(false);
+            $table->foreignId('year_id')->constrained('years');
+            $table->foreignId('payable_id')->constrained('payables');
             $table->boolean('is_general');
-            $table->string('frequency_type');
-            $table->longText('description');
             $table->timestamps();
         });
     }
@@ -28,6 +25,6 @@ return new class extends Migration
      */
     public function down(): void
     {
-        Schema::dropIfExists('accounts');
+        Schema::dropIfExists('payable_year');
     }
 };
