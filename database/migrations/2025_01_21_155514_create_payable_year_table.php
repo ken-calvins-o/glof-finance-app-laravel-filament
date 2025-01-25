@@ -15,7 +15,6 @@ return new class extends Migration
             $table->id();
             $table->foreignId('year_id')->constrained('years');
             $table->foreignId('payable_id')->constrained('payables');
-            $table->boolean('is_general');
             $table->timestamps();
         });
     }

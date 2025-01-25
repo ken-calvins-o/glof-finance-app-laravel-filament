@@ -2,7 +2,6 @@
 
 namespace App\Models;
 
-use App\Enums\MemberStatus;
 use Filament\Forms\Components\Fieldset;
 use Filament\Forms\Components\Repeater;
 use Filament\Forms\Components\Section;
@@ -19,6 +18,7 @@ class Payable extends Model
         'id' => 'integer',
         'account_id' => 'integer',
         'from_savings' => 'boolean',
+        'is_general' => 'boolean',
     ];
 
     public function months(): BelongsToMany
@@ -94,6 +94,24 @@ class Payable extends Model
                                 ->reactive()
                                 ->columnSpanFull(),
                         ]),
+                    Fieldset::make('Payment Details')
+                        ->schema([
+                            TextInput::make('total_amount')
+                                ->label('Amount')
+                                ->prefix('KES')
+                                ->helperText('This amount is the same for all members')
+                                ->reactive()
+                                ->numeric()
+                                ->minValue(1),
+                            ToggleButtons::make('from_savings')
+                                ->boolean()
+                                ->label('Use member\'s savings?')
+                                ->default(false)
+                                ->inline()
+                                ->grouped(),
+                        ])
+                        ->columns(2)
+                        ->visible(fn($state) => $state['is_general']),
                     Fieldset::make('Exclude/Leave out members')
                         ->schema([
                             Fieldset::make('Exclude/Leave out members')
@@ -121,17 +139,6 @@ class Payable extends Model
                                         ->maxItems(5),
                                 ])
                                 ->visible(fn($state) => $state['is_general']),
-                        ])
-                        ->visible(fn($state) => $state['is_general']),
-                    Fieldset::make('Payment Mode')
-                        ->schema([
-                            ToggleButtons::make('from_savings')
-                                ->boolean()
-                                ->label('Do you want to debit the outstanding balance of the associated members from their savings account?')
-                                ->default(false)
-                                ->inline()
-                                ->grouped()
-                                ->columnSpanFull(),
                         ])
                         ->visible(fn($state) => $state['is_general']),
                 ])
@@ -165,7 +172,7 @@ class Payable extends Model
                                         ->preload()
                                         ->required()
                                         ->reactive(),
-                                    TextInput::make('amount_due')
+                                    TextInput::make('total_amount')
                                         ->label('Debit Amount')
                                         ->required()
                                         ->numeric()
