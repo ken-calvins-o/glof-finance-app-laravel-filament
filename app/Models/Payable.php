@@ -137,14 +137,14 @@ class Payable extends Model
                                         ->label('Member')
                                         ->options(function (callable $get) {
                                             // Fetch the `account_id` value from the main form
-                                            $accountId = $get('../../account_id'); // Access parent context outside the Repeater
+                                            $accountId = $get('../../account_id'); // Access parent `account_id`
 
                                             // Return empty options if no account is selected
                                             if (!$accountId) {
                                                 return [];
                                             }
 
-                                            // Fetch users linked to the given account_id via `AccountUser` pivot model
+                                            // Fetch users linked to the given `account_id` via `AccountUser` pivot model
                                             return AccountUser::where('account_id', $accountId)
                                                 ->with('user:id,name') // Eager load the associated User model for `id` and `name`
                                                 ->get()
@@ -153,7 +153,8 @@ class Payable extends Model
                                         })
                                         ->searchable()
                                         ->preload()
-                                        ->required(),
+                                        ->required()
+                                        ->reactive(),
                                     TextInput::make('amount_due')
                                         ->label('Debit Amount')
                                         ->required()
@@ -162,7 +163,31 @@ class Payable extends Model
                                         ->hintIcon('heroicon-o-currency-dollar')
                                         ->prefix('KES')
                                         ->reactive()
-                                        ->debounce(500),
+                                        ->afterStateUpdated(function (callable $get, callable $set) {
+                                            $accountId = $get('../../account_id');
+                                            $userId = $get('user_id');
+
+                                            // Fetch the latest total contribution for the user and account
+                                            $totalContributed = \App\Models\Receivable::where('account_id', $accountId)
+                                                ->where('user_id', $userId)
+                                                ->latest('created_at') // Get the most recent entry
+                                                ->value('total_amount_contributed') ?? 0; // Default to 0 if not found
+
+                                            // Update helper text
+                                            $set('helperText', "Total contributed: KES " . number_format($totalContributed, 2));
+                                        })
+                                        ->helperText(function (callable $get) {
+                                            $accountId = $get('../../account_id');
+                                            $userId = $get('user_id');
+
+                                            // Fetch total contribution
+                                            $totalContributed = \App\Models\Receivable::where('account_id', $accountId)
+                                                ->where('user_id', $userId)
+                                                ->latest('created_at')
+                                                ->value('total_amount_contributed') ?? 0;
+
+                                            return "Total contributed: KES " . number_format($totalContributed, 2);
+                                        }),
                                     ToggleButtons::make('from_savings')
                                         ->label('Use savings')
                                         ->boolean()
@@ -170,7 +195,8 @@ class Payable extends Model
                                         ->inline()
                                         ->grouped()
                                         ->reactive(),
-                                ])->columns(3),
+                                ])
+                                ->columns(3),
                         ])
                         ->createItemButtonLabel('Add More Details')
                         ->columnSpanFull(),

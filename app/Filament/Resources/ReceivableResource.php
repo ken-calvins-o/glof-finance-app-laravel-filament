@@ -59,6 +59,9 @@ class ReceivableResource extends Resource
                 Tables\Columns\TextColumn::make('amount_contributed')
                     ->sortable()
                     ->formatStateUsing(fn($state) => 'KES ' . number_format($state, 2)),
+                Tables\Columns\TextColumn::make('total_amount_contributed')
+                    ->sortable()
+                    ->formatStateUsing(fn($state) => 'KES ' . number_format($state, 2)),
                 Tables\Columns\TextColumn::make('months')
                     ->label('Recorded Month')
                     ->getStateUsing(fn ($record) => $record->months->pluck('name')->implode(', ') ?? 'N/A')
