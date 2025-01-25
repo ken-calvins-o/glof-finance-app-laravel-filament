@@ -45,6 +45,18 @@ class PayableResource extends Resource
                     ->label('Account')
                     ->searchable()
                     ->sortable(),
+                TextColumn::make('user.name')
+                    ->label('Member name')
+                    ->searchable()
+                    ->sortable(),
+                Tables\Columns\TextColumn::make('months')
+                    ->label('Allocated Month')
+                    ->getStateUsing(fn ($record) => $record->months->pluck('name')->implode(', ') ?? 'N/A')
+                    ->sortable(),
+                Tables\Columns\TextColumn::make('years')
+                    ->label('Allocated Year')
+                    ->getStateUsing(fn ($record) => $record->years->pluck('year')->implode(', ') ?? 'N/A')
+                    ->sortable(),
                 TextColumn::make('total_amount')
                     ->prefix('KES ')
                     ->formatStateUsing(fn($state) => number_format($state, 2))
@@ -63,7 +75,7 @@ class PayableResource extends Resource
                 //
             ])
             ->actions([
-                Tables\Actions\EditAction::make(),
+//                Tables\Actions\EditAction::make(),
             ])
             ->bulkActions([
                 Tables\Actions\BulkActionGroup::make([
@@ -84,7 +96,7 @@ class PayableResource extends Resource
         return [
             'index' => Pages\ListPayables::route('/'),
             'create' => Pages\CreatePayable::route('/create'),
-            'edit' => Pages\EditPayable::route('/{record}/edit'),
+//            'edit' => Pages\EditPayable::route('/{record}/edit'),
         ];
     }
 }
