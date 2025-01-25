@@ -3,10 +3,10 @@
 namespace App\Filament\Resources\PayableResource\Pages;
 
 use App\Filament\Resources\PayableResource;
+use App\Models\AccountUser;
 use App\Models\Payable;
 use App\Models\MonthlyPayable;
 use App\Models\PayableYear;
-use App\Models\AccountUser;
 use App\Models\Debt;
 use App\Models\Receivable;
 use Filament\Resources\Pages\CreateRecord;
@@ -20,8 +20,8 @@ class CreatePayable extends CreateRecord
     {
         return DB::transaction(function () use ($data) {
             return $data['is_general']
-                ? $this->createGeneralPayables($data)
-                : $this->createCustomPayable($data);
+                ? $this->createGeneralPayables($data) // Handles general payables
+                : $this->createCustomPayables($data); // Handles custom payables from repeater
         });
     }
 
@@ -33,7 +33,8 @@ class CreatePayable extends CreateRecord
      */
     protected function createGeneralPayables(array $data): ?Payable
     {
-        $users = $this->getEligibleUsers($data['account_id'], $data['user_id'] ?? []);
+        $users = $this->getEligibleUsers($data['account_id'], $data['user_id'] ?? []); // Filter users to exclude specified ones
+        $payable = null;
 
         foreach ($users as $accountUser) {
             $payable = $this->createPayableRecord($data, $accountUser->user_id);
@@ -42,26 +43,32 @@ class CreatePayable extends CreateRecord
             $this->handleDebtCreation($payable);
         }
 
-        // Return the first payable (or null if no users were added)
-        return $payable ?? null;
+        return $payable; // Return the last created Payable
     }
 
     /**
-     * Handle the creation of a custom payable.
+     * Handle the creation of custom payables when is_general is false.
      *
      * @param array $data
      * @return Payable
      */
-    protected function createCustomPayable(array $data): Payable
+    protected function createCustomPayables(array $data): Payable
     {
-        $payable = Payable::create([
-            'account_id' => $data['account_id'],
-            'is_general' => $data['is_general'],
-        ]);
+        $customUsers = $data['users'] ?? []; // Extract users from the repeater section
+        $payable = null;
 
-        $this->handleDebtCreation($payable);
+        foreach ($customUsers as $user) {
+            $payable = $this->createCustomPayableRecord($data, $user['user_id'], $user['total_amount'], $user['from_savings']);
+            $this->createMonthlyPayable($payable->id, $data['month_id']);
+            $this->createPayableYear($payable->id, $data['year_id']);
+            $this->handleDebtCreation($payable);
+        }
 
-        return $payable;
+        if (!$payable) {
+            throw new \Exception("No valid payable was created."); // Ensure we always return a valid Payable
+        }
+
+        return $payable; // Return the last created Payable
     }
 
     /**
@@ -135,6 +142,26 @@ class CreatePayable extends CreateRecord
             'user_id' => $userId,
             'total_amount' => $data['total_amount'],
             'from_savings' => $data['from_savings'],
+            'is_general' => $data['is_general'],
+        ]);
+    }
+
+    /**
+     * Create a custom Payable record for a specific user with specific total_amount.
+     *
+     * @param array $data
+     * @param int $userId
+     * @param float $totalAmount
+     * @param bool $fromSavings
+     * @return Payable
+     */
+    protected function createCustomPayableRecord(array $data, int $userId, float $totalAmount, bool $fromSavings): Payable
+    {
+        return Payable::create([
+            'account_id' => $data['account_id'],
+            'user_id' => $userId,
+            'total_amount' => $totalAmount,
+            'from_savings' => $fromSavings,
             'is_general' => $data['is_general'],
         ]);
     }
