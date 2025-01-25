@@ -102,12 +102,22 @@ class Payable extends Model
                                         ->label('Select Members')
                                         ->multiple()
                                         ->reactive()
-                                        ->options(
-                                            User::query()
-                                                ->where('member_status', MemberStatus::Active) // Filter users by active status
-                                                ->pluck('name', 'id')
-                                                ->toArray() // Fetch `name` and `id` as key-value pairs
-                                        )
+                                        ->options(function (callable $get) {
+                                            // Fetch the `account_id` value dynamically from the parent
+                                            $accountId = $get('account_id'); // Access `account_id` directly since it's not nested
+
+                                            // Return empty options if `account_id` is not set
+                                            if (!$accountId) {
+                                                return [];
+                                            }
+
+                                            // Fetch users associated with the given `account_id` via the pivot model
+                                            return AccountUser::where('account_id', $accountId)
+                                                ->with('user:id,name') // Load only `id` and `name` for performance
+                                                ->get()
+                                                ->mapWithKeys(fn($accountUser) => [$accountUser->user->id => $accountUser->user->name])
+                                                ->toArray();
+                                        })
                                         ->maxItems(5),
                                 ])
                                 ->visible(fn($state) => $state['is_general']),
@@ -181,7 +191,7 @@ class Payable extends Model
                                             $userId = $get('user_id');
 
                                             // Fetch total contribution
-                                            $totalContributed = \App\Models\Receivable::where('account_id', $accountId)
+                                            $totalContributed = Receivable::where('account_id', $accountId)
                                                 ->where('user_id', $userId)
                                                 ->latest('created_at')
                                                 ->value('total_amount_contributed') ?? 0;
