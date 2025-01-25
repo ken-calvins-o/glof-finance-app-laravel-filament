@@ -7,6 +7,8 @@ use App\Models\Payable;
 use App\Models\MonthlyPayable;
 use App\Models\PayableYear;
 use App\Models\AccountUser;
+use App\Models\Debt;
+use App\Models\Receivable;
 use Filament\Resources\Pages\CreateRecord;
 use Illuminate\Support\Facades\DB;
 
@@ -37,6 +39,7 @@ class CreatePayable extends CreateRecord
             $payable = $this->createPayableRecord($data, $accountUser->user_id);
             $this->createMonthlyPayable($payable->id, $data['month_id']);
             $this->createPayableYear($payable->id, $data['year_id']);
+            $this->handleDebtCreation($payable);
         }
 
         // Return the first payable (or null if no users were added)
@@ -51,11 +54,57 @@ class CreatePayable extends CreateRecord
      */
     protected function createCustomPayable(array $data): Payable
     {
-        // You can extend this method to handle custom payables as needed
-        return Payable::create([
+        $payable = Payable::create([
             'account_id' => $data['account_id'],
             'is_general' => $data['is_general'],
         ]);
+
+        $this->handleDebtCreation($payable);
+
+        return $payable;
+    }
+
+    /**
+     * Handle the creation of a debt record if conditions are met.
+     *
+     * @param Payable $payable
+     * @return void
+     */
+    protected function handleDebtCreation(Payable $payable): void
+    {
+        $latestReceivable = Receivable::where('account_id', $payable->account_id)
+            ->where('user_id', $payable->user_id)
+            ->latest('id') // Assumes the latest record is determined by an incrementing ID or timestamp
+            ->first();
+
+        $latestTotalContributed = $latestReceivable->total_amount_contributed ?? 0.00;
+
+        if ($payable->total_amount > $latestTotalContributed) {
+            $outstandingBalance = $this->calculateOutstandingBalance(
+                $payable->total_amount,
+                $latestTotalContributed
+            );
+
+            Debt::create([
+                'account_id' => $payable->account_id,
+                'user_id' => $payable->user_id,
+                'outstanding_balance' => $outstandingBalance,
+            ]);
+        }
+    }
+
+    /**
+     * Calculate the outstanding balance with 1% interest.
+     *
+     * @param float $payableAmount
+     * @param float $totalContributed
+     * @return float
+     */
+    protected function calculateOutstandingBalance(float $payableAmount, float $totalContributed): float
+    {
+        $difference = $payableAmount - $totalContributed;
+        $interest = $difference * 0.01; // 1% interest
+        return $difference + $interest;
     }
 
     /**
