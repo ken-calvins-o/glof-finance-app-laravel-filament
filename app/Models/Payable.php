@@ -62,12 +62,7 @@ class Payable extends Model
                                 ->searchable()
                                 ->preload()
                                 ->required()
-                                ->reactive()
-                                ->afterStateUpdated(function ($set, $state) {
-                                    $sums = Payable::getAccountSums($state);
-                                    $set('total_amount', $sums['total_due']);
-                                    $set('total_raised', $sums['total_contributed']);
-                                }),
+                                ->reactive(),
                             Select::make('month_id')
                                 ->label('Month')
                                 ->searchable()
@@ -135,19 +130,30 @@ class Payable extends Model
                 ->schema([
                     Repeater::make('users')
                         ->label('Select Members')
-                        ->visible(fn() => true)
                         ->schema([
                             Fieldset::make('Member Payment Information')
                                 ->schema([
                                     Select::make('user_id')
                                         ->label('Member')
-                                        ->options(User::query()
-                                            ->where('member_status', MemberStatus::Active) // Filter users by active status
-                                            ->pluck('name', 'id')) // Fetch users manually
+                                        ->options(function (callable $get) {
+                                            // Fetch the `account_id` value from the main form
+                                            $accountId = $get('../../account_id'); // Access parent context outside the Repeater
+
+                                            // Return empty options if no account is selected
+                                            if (!$accountId) {
+                                                return [];
+                                            }
+
+                                            // Fetch users linked to the given account_id via `AccountUser` pivot model
+                                            return AccountUser::where('account_id', $accountId)
+                                                ->with('user:id,name') // Eager load the associated User model for `id` and `name`
+                                                ->get()
+                                                ->mapWithKeys(fn($accountUser) => [$accountUser->user->id => $accountUser->user->name])
+                                                ->toArray();
+                                        })
                                         ->searchable()
                                         ->preload()
-                                        ->required()
-                                        ->columnSpan(1),
+                                        ->required(),
                                     TextInput::make('amount_due')
                                         ->label('Debit Amount')
                                         ->required()
@@ -156,14 +162,16 @@ class Payable extends Model
                                         ->hintIcon('heroicon-o-currency-dollar')
                                         ->prefix('KES')
                                         ->reactive()
-                                        ->debounce(500)
-                                        ->afterStateUpdated(function ($state, callable $set) {
-                                            // Set budget to the same value as amount_due directly for custom accounts
-                                            $set('budget', $state);
-                                        }),
-                                ]),
+                                        ->debounce(500),
+                                    ToggleButtons::make('from_savings')
+                                        ->label('Use savings')
+                                        ->boolean()
+                                        ->default(false)
+                                        ->inline()
+                                        ->grouped()
+                                        ->reactive(),
+                                ])->columns(3),
                         ])
-                        ->columns(3)
                         ->createItemButtonLabel('Add More Details')
                         ->columnSpanFull(),
                 ])
