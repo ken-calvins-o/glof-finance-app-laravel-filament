@@ -57,9 +57,11 @@ class ReceivableResource extends Resource
                     ->sortable()
                     ->searchable(),
                 Tables\Columns\TextColumn::make('amount_contributed')
+                    ->label('Amount Contributed')
                     ->sortable()
                     ->formatStateUsing(fn($state) => 'KES ' . number_format($state, 2)),
                 Tables\Columns\TextColumn::make('total_amount_contributed')
+                    ->label('Account Balance')
                     ->sortable()
                     ->formatStateUsing(fn($state) => 'KES ' . number_format($state, 2)),
                 Tables\Columns\TextColumn::make('months')

@@ -16,6 +16,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use SebastianBergmann\CodeCoverage\Report\Xml\Report;
 
 class Account extends Model
 {
@@ -32,6 +33,11 @@ class Account extends Model
     public function contributions(): HasMany
     {
         return $this->hasMany(Contribution::class);
+    }
+
+    public function reports(): HasMany
+    {
+        return $this->hasMany(Report::class);
     }
 
     public function receivables()

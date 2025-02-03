@@ -17,6 +17,7 @@ use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Validation\Rule;
+use SebastianBergmann\CodeCoverage\Report\Xml\Report;
 use Ysfkaya\FilamentPhoneInput\Forms\PhoneInput;
 
 class User extends Authenticatable
@@ -68,6 +69,11 @@ class User extends Authenticatable
     public function savings(): HasMany
     {
         return $this->hasMany(Saving::class);
+    }
+
+    public function reports(): HasMany
+    {
+        return $this->hasMany(Report::class);
     }
 
     public function accounts()

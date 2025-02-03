@@ -2,13 +2,16 @@
 
 namespace App\Filament\Resources\PayableResource\Pages;
 
+use App\Enums\PaymentMode;
 use App\Filament\Resources\PayableResource;
 use App\Models\AccountUser;
+use App\Models\MonthlyReceivable;
 use App\Models\Payable;
 use App\Models\MonthlyPayable;
 use App\Models\PayableYear;
 use App\Models\Debt;
 use App\Models\Receivable;
+use App\Models\ReceivableYear;
 use Filament\Resources\Pages\CreateRecord;
 use Illuminate\Support\Facades\DB;
 
@@ -37,10 +40,10 @@ class CreatePayable extends CreateRecord
         $payable = null;
 
         foreach ($users as $accountUser) {
-            $payable = $this->createPayableRecord($data, $accountUser->user_id);
-            $this->createMonthlyPayable($payable->id, $data['month_id']);
-            $this->createPayableYear($payable->id, $data['year_id']);
-            $this->handleDebtCreation($payable);
+            $payable = $this->createPayableRecord($data, $accountUser->user_id); // Create the payable record
+            $this->createMonthlyPayable($payable->id, $data['month_id']); // Link to Month
+            $this->createPayableYear($payable->id, $data['year_id']);     // Link to Year
+            $this->handleDebtCreation($payable, $data['month_id'], $data['year_id']); // Updated with 3 arguments
         }
 
         return $payable; // Return the last created Payable
@@ -59,9 +62,9 @@ class CreatePayable extends CreateRecord
 
         foreach ($customUsers as $user) {
             $payable = $this->createCustomPayableRecord($data, $user['user_id'], $user['total_amount'], $user['from_savings']);
-            $this->createMonthlyPayable($payable->id, $data['month_id']);
-            $this->createPayableYear($payable->id, $data['year_id']);
-            $this->handleDebtCreation($payable);
+            $this->createMonthlyPayable($payable->id, $data['month_id']); // Link to Month
+            $this->createPayableYear($payable->id, $data['year_id']);     // Link to Year
+            $this->handleDebtCreation($payable, $data['month_id'], $data['year_id']); // Updated with 3 arguments
         }
 
         if (!$payable) {
@@ -77,29 +80,56 @@ class CreatePayable extends CreateRecord
      * @param Payable $payable
      * @return void
      */
-    protected function handleDebtCreation(Payable $payable): void
+    protected function handleDebtCreation(Payable $payable, int $monthId, int $yearId): void
     {
+        // Get the latest receivable for this account and user
         $latestReceivable = Receivable::where('account_id', $payable->account_id)
             ->where('user_id', $payable->user_id)
-            ->latest('id') // Assumes the latest record is determined by an incrementing ID or timestamp
+            ->latest('id') // Assumes latest is determined by ID or timestamp
             ->first();
 
         $latestTotalContributed = $latestReceivable->total_amount_contributed ?? 0.00;
 
         if ($payable->total_amount > $latestTotalContributed) {
+            // User accumulates an outstanding balance
+            // Calculate outstanding balance with interest
             $outstandingBalance = $this->calculateOutstandingBalance(
                 $payable->total_amount,
                 $latestTotalContributed
             );
 
+            // Adjust total amount contributed based on outstanding balance
+            $contributionAdjustment = $latestTotalContributed - $outstandingBalance;
+
+            // STEP 1: Create Debt record
             Debt::create([
                 'account_id' => $payable->account_id,
                 'user_id' => $payable->user_id,
                 'outstanding_balance' => $outstandingBalance,
             ]);
+
+            // STEP 2: Create Receivable record
+            $receivable = Receivable::create([
+                'account_id' => $payable->account_id,
+                'user_id' => $payable->user_id,
+                'amount_contributed' => $outstandingBalance, // Outstanding balance
+                'total_amount_contributed' => $contributionAdjustment, // Updated total contributed
+                'payment_method' => PaymentMode::Credit_Loan, // Payment mode set as Credit Loan
+            ]);
+
+            // STEP 3: Link Receivable to MonthlyReceivable
+            MonthlyReceivable::create([
+                'month_id' => $monthId, // Use the same month
+                'receivable_id' => $receivable->id,
+            ]);
+
+            // STEP 4: Link Receivable to ReceivableYear
+            ReceivableYear::create([
+                'year_id' => $yearId, // Use the same year
+                'receivable_id' => $receivable->id,
+            ]);
         }
     }
-
     /**
      * Calculate the outstanding balance with 1% interest.
      *

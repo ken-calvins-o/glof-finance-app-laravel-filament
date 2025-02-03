@@ -2,6 +2,7 @@
 
 namespace App\Providers\Filament;
 
+use App\Filament\Pages\StaticReadOnlyTable;
 use App\Filament\Resources\DebtResource;
 use Awcodes\FilamentQuickCreate\QuickCreatePlugin;
 use CharrafiMed\GlobalSearchModal\GlobalSearchModalPlugin;
@@ -35,6 +36,7 @@ class AppPanelProvider extends PanelProvider
             ->login()
             ->passwordReset()
             ->profile()
+            ->sidebarCollapsibleOnDesktop()
             ->colors([
                 'primary' => Color::Orange,
                 'gray' => Color::Slate,
@@ -70,6 +72,13 @@ class AppPanelProvider extends PanelProvider
             ->authMiddleware([
                 Authenticate::class,
             ]);
+    }
+
+    public static function pages(): array
+    {
+        return [
+            StaticReadOnlyTable::class, // Include your newly created page here
+        ];
     }
 
     public function register(): void

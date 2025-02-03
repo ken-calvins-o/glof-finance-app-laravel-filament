@@ -172,13 +172,30 @@ class CreateAccount extends CreateRecord
      * @param float $currentContribution
      * @return float
      */
+    /**
+     * Helper to calculate the total amount contributed by a user for a specific account.
+     *
+     * Now calculates the difference between the total contributions (Receivable)
+     * and the total outstanding balance (Debt), and then adds the current contribution.
+     *
+     * @param int $accountId
+     * @param int $userId
+     * @param float $currentContribution
+     * @return float
+     */
     protected function getTotalAmountContributed(int $accountId, int $userId, float $currentContribution): float
     {
-        // Compute the sum of all previous contributions for the user in this account
-        $existingTotal = Receivable::where('account_id', $accountId)
+        // Compute the total contributions from the `Receivable` model for the account and user
+        $totalContributions = Receivable::where('account_id', $accountId)
             ->where('user_id', $userId)
             ->sum('amount_contributed');
 
-        return $existingTotal + $currentContribution;
+        // Compute the total outstanding balance from the `Debt` model for the account and user
+        $totalOutstandingBalance = Debt::where('account_id', $accountId)
+            ->where('user_id', $userId)
+            ->sum('outstanding_balance');
+
+        // Calculate the difference and add the current contribution
+        return $totalContributions - $totalOutstandingBalance + $currentContribution;
     }
 }
