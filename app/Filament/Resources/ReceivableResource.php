@@ -60,17 +60,15 @@ class ReceivableResource extends Resource
                     ->label('Amount Contributed')
                     ->sortable()
                     ->formatStateUsing(fn($state) => 'KES ' . number_format($state, 2)),
-                Tables\Columns\TextColumn::make('total_amount_contributed')
-                    ->label('Account Balance')
-                    ->sortable()
-                    ->formatStateUsing(fn($state) => 'KES ' . number_format($state, 2)),
                 Tables\Columns\TextColumn::make('months')
                     ->label('Allocated Month')
                     ->getStateUsing(fn ($record) => $record->months->pluck('name')->implode(', ') ?? 'N/A')
+                    ->toggleable(isToggledHiddenByDefault: true)
                     ->sortable(),
                 Tables\Columns\TextColumn::make('years')
                     ->label('Allocated Year')
                     ->getStateUsing(fn ($record) => $record->years->pluck('year')->implode(', ') ?? 'N/A')
+                    ->toggleable(isToggledHiddenByDefault: true)
                     ->sortable(),
                 Tables\Columns\TextColumn::make('payment_method')
                     ->sortable()

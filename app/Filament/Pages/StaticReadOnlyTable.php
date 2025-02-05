@@ -3,6 +3,7 @@
 namespace App\Filament\Pages;
 
 use App\Models\Account;
+use App\Models\AccountCollection;
 use App\Models\Loan;
 use App\Models\Saving;
 use App\Models\User;
@@ -35,10 +36,9 @@ class StaticReadOnlyTable extends Page
 
             // Add data for each account
             foreach ($accounts as $account) {
-                $latestContribution = Receivable::where('user_id', $user->id)
+                $latestContribution = AccountCollection::where('user_id', $user->id)
                     ->where('account_id', $account->id)
-                    ->latest('created_at') // Get the latest record
-                    ->value('total_amount_contributed'); // Assuming this field exists in the receivables table
+                    ->value('amount'); // Assuming this field exists in the receivables table
 
                 // Add to the row
                 $row['Account ' . $account->id] = $latestContribution ?? 0.00;

@@ -13,6 +13,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
+use Illuminate\Support\Facades\DB;
 
 class Receivable extends Model
 {
@@ -70,6 +71,7 @@ class Receivable extends Model
                 ->schema([
                     Fieldset::make('Receivable Details')
                         ->schema([
+                            // Select the Member/User
                             Select::make('user_id')
                                 ->label('Member')
                                 ->relationship('user', 'name')
@@ -77,7 +79,9 @@ class Receivable extends Model
                                 ->preload()
                                 ->required()
                                 ->reactive()
-                                ->afterStateUpdated(fn(callable $set, callable $get) => self::updateBalance($set, $get)),
+                                ->afterStateUpdated(fn() => null), // Do nothing on state update for user_id.
+
+                            // Payment Mode Selection
                             Select::make('payment_mode')
                                 ->enum(PaymentMode::class)
                                 ->hintIcon('heroicon-o-banknotes')
@@ -89,25 +93,46 @@ class Receivable extends Model
                                 )
                                 ->searchable()
                                 ->required(),
+
+                            // Select Account
                             Select::make('account_id')
                                 ->relationship('account', 'name')
                                 ->label('Account')
                                 ->searchable()
                                 ->preload()
-                                ->required(),
+                                ->required()
+                                ->reactive()
+                                ->afterStateUpdated(fn() => null), // Do nothing on state update for account_id.
+
+                            // Amount Field Without Auto-Updating
                             TextInput::make('amount_contributed')
                                 ->label('Amount')
                                 ->required()
-                                ->lazy()
+                                ->lazy() // Will only be updated when the user explicitly enters a value.
                                 ->live()
                                 ->minValue(1)
                                 ->numeric()
                                 ->hintIcon('heroicon-o-currency-dollar')
                                 ->prefix('KES')
-                                ->helperText(fn(callable $get) => self::generateHelperText($get)),
+                                ->helperText(function (callable $get) {
+                                    $accountId = $get('account_id'); // Get the selected account_id
+                                    $userId = $get('user_id'); // Get the selected user_id
 
+                                    // Fetch amount_contributed using reusable method
+                                    $contributedAmount = self::getContributedAmount($accountId, $userId);
+
+                                    // Format the amount using number_format to include commas and 2 decimal places
+                                    $contributedAmountFormatted = number_format($contributedAmount ?? 0, 2);
+
+                                    // Show existing amount as guidance, but do not populate the field.
+                                    return $contributedAmount
+                                        ? "KES $contributedAmountFormatted has been contributed to this account."
+                                        : "KES " . number_format(0, 2); // Ensure fallback is also properly formatted
+                                }),
                         ])
                         ->columns(2),
+
+                    // Payment Mode Configuration
                     Fieldset::make('Payment Mode')
                         ->schema([
                             ToggleButtons::make('from_savings')
@@ -124,26 +149,22 @@ class Receivable extends Model
         ];
     }
 
-    private static function generateHelperText(callable $get)
+    /**
+     * Helper method to fetch the amount_contributed from `account_collections`.
+     *
+     * @param int|null $accountId
+     * @param int|null $userId
+     * @return float|null
+     */
+    private static function getContributedAmount(?int $accountId, ?int $userId): ?float
     {
-        $balance = $get('outstanding_balance');
-        return 'Outstanding Balance: ' . ($balance ?: 0.00);
-    }
-
-    protected static function updateBalance(callable $set, callable $get)
-    {
-        $userId = $get('user_id');
-        $accountId = $get('account_id');
-
-        if ($userId && $accountId) {
-            // Fetch the outstanding_balance from the Debt model
-            $balance = Debt::where('user_id', $userId)
-                ->where('account_id', $accountId)
-                ->value('outstanding_balance');
-
-            $set('outstanding_balance', $balance ?? 0.00);
-        } else {
-            $set('outstanding_balance', 0.00);
+        if (!$accountId || !$userId) {
+            return null;
         }
+
+        return DB::table('account_collections')
+            ->where('account_id', $accountId)
+            ->where('user_id', $userId)
+            ->value('amount'); // Fetch the amount field
     }
 }
