@@ -26,10 +26,4 @@ class AccountCollection extends Pivot
     {
         return $this->belongsTo(User::class);
     }
-
-    public function receivable(): BelongsTo
-    {
-        return $this->belongsTo(Receivable::class);
-    }
-
 }

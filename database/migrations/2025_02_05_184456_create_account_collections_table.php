@@ -14,7 +14,6 @@ return new class extends Migration
         Schema::create('account_collections', function (Blueprint $table) {
             $table->id();
             $table->foreignId('account_id')->constrained('accounts');
-            $table->foreignId('receivable_id')->constrained('receivables');
             $table->foreignId('user_id')->constrained('users');
             $table->decimal('amount', 10, 2);
             $table->timestamps();

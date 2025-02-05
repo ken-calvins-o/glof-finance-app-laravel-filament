@@ -126,8 +126,8 @@ class Receivable extends Model
 
                                     // Show existing amount as guidance, but do not populate the field.
                                     return $contributedAmount
-                                        ? "KES $contributedAmountFormatted has been contributed to this account."
-                                        : "KES " . number_format(0, 2); // Ensure fallback is also properly formatted
+                                        ? "Kes $contributedAmountFormatted has been contributed to this account."
+                                        : "Kes " . number_format(0, 2); // Ensure fallback is also properly formatted
                                 }),
                         ])
                         ->columns(2),

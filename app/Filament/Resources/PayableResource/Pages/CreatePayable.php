@@ -4,6 +4,7 @@ namespace App\Filament\Resources\PayableResource\Pages;
 
 use App\Enums\DebtStatusEnum;
 use App\Filament\Resources\PayableResource;
+use App\Models\AccountCollection;
 use App\Models\Debt;
 use App\Models\Income;
 use App\Models\MonthlyPayable;
@@ -24,7 +25,6 @@ class CreatePayable extends CreateRecord
     protected function handleRecordCreation(array $data): Model
     {
         DB::transaction(function () use ($data) {
-            // Handle shared payments
             if ($data['is_general']) {
                 $excludedUserIds = $data['user_id'] ?? [];
 
@@ -52,7 +52,7 @@ class CreatePayable extends CreateRecord
     }
 
     /**
-     * Create a Payable, handle debts selectively, and update the Savings model.
+     * Create a Payable, handle debts selectively, and update the Savings and AccountCollection models.
      *
      * @param array $data
      * @param \App\Models\User $user
@@ -92,10 +92,13 @@ class CreatePayable extends CreateRecord
                 throw new ModelNotFoundException("No savings record found for user {$user->id}");
             }
 
-            // Step 4: Check if debt needs to be created and handle outstanding balances.
+            // Step 4: Check if debt needs to be created and handle outstanding balances
             $outstandingAmount = $this->checkAndCreateDebtAndIncome($data['account_id'], $user, $totalAmount);
 
-            // Step 5: Adjust the Savings model based on new calculations
+            // Step 5: Update AccountCollection to reduce amount or create a new record
+            $this->updateOrCreateAccountCollection($data['account_id'], $user, $totalAmount, $outstandingAmount);
+
+            // Step 6: Adjust the Savings model based on new calculations
             $adjustmentAmount = $outstandingAmount > 0 ? $outstandingAmount : $totalAmount;
             $newNetWorth = $saving->net_worth - $adjustmentAmount;
 
@@ -112,13 +115,38 @@ class CreatePayable extends CreateRecord
     }
 
     /**
-     * Check conditions for Debt creation and handle both Debt and Income logic.
+     * Update or create an AccountCollection record to reduce the amount.
      *
      * @param int $accountId
      * @param \App\Models\User $user
      * @param float $totalAmount
-     * @return float The outstanding balance (including interest) if Debt is created, 0 otherwise.
+     * @param float|null $outstandingAmount
+     * @return void
      */
+    protected function updateOrCreateAccountCollection(int $accountId, User $user, float $totalAmount, ?float $outstandingAmount): void
+    {
+        $accountCollection = AccountCollection::where('account_id', $accountId)
+            ->where('user_id', $user->id)
+            ->first();
+
+        if ($accountCollection) {
+            // Update the amount by subtracting the total amount
+            $accountCollection->update([
+                'amount' => $accountCollection->amount - $totalAmount,
+            ]);
+        } else {
+            // Calculate interest if outstanding balance exists
+            $interestAmount = ($outstandingAmount !== null && $outstandingAmount > 0) ? $outstandingAmount * 0.01 : 0;
+
+            // Create a new record with a negative amount (inclusive of interest, if applicable)
+            AccountCollection::create([
+                'account_id' => $accountId,
+                'user_id' => $user->id,
+                'amount' => -($totalAmount + $interestAmount),
+            ]);
+        }
+    }
+
     /**
      * Check conditions for Debt creation and handle both Debt and Income logic.
      *
@@ -129,7 +157,6 @@ class CreatePayable extends CreateRecord
      */
     protected function checkAndCreateDebtAndIncome(int $accountId, User $user, float $totalAmount): float
     {
-        // Default contributed amount is 0 if no AccountCollection record exists
         $accountCollection = DB::table('account_collections')
             ->where('account_id', $accountId)
             ->where('user_id', $user->id)
@@ -139,23 +166,19 @@ class CreatePayable extends CreateRecord
 
         $outstandingBalance = 0;
 
-        // ONLY handle Debt creation if `total_amount` > `amount` in AccountCollection
         if ($totalAmount > $totalContributedAmount) {
             $outstandingBalance = $totalAmount - $totalContributedAmount;
 
-            // Add 1% interest
             $interestAmount = $outstandingBalance * 0.01;
             $outstandingBalance += $interestAmount;
 
-            // Create Debt record
             Debt::create([
                 'account_id' => $accountId,
                 'user_id' => $user->id,
                 'outstanding_balance' => $outstandingBalance,
-                'debt_status' => DebtStatusEnum::Pending, // Mark as pending
+                'debt_status' => DebtStatusEnum::Pending,
             ]);
 
-            // Create corresponding Income record
             Income::create([
                 'account_id' => $accountId,
                 'user_id' => $user->id,
