@@ -45,36 +45,6 @@ class AccountResource extends Resource
             ->columns([
                 Tables\Columns\TextColumn::make('name')
                     ->searchable(),
-                Tables\Columns\TextColumn::make('is_general')
-                    ->label('Account Type')
-                    ->badge()
-                    ->formatStateUsing(function ($state) {
-                        return $state ? 'General' : 'Custom';
-                    })
-                    ->color(fn($state) => $state ? Color::Amber : Color::Green) // primary for General, success for Custom
-                    ->searchable()
-                    ->sortable(),
-                Tables\Columns\TextColumn::make('membership_count')
-                    ->label('Membership Count')
-                    ->badge()
-                    ->getStateUsing(fn(Account $record) => $record->users()->count()),
-                Tables\Columns\TextColumn::make('budget')
-                    ->label('Total Amount')
-                    ->prefix('KES ')
-                    ->formatStateUsing(fn($state) => number_format($state, 2))
-                    ->color(fn($record) => !$record->is_general ? Color::Green : null) // Set badge color to green for custom accounts
-                    ->getStateUsing(function (Model $record) {
-                        // Sum the `amount_contributed` field from the Receivable model for this account
-                        return Receivable::where('account_id', $record->id)->sum('amount_contributed');
-                    }),
-                Tables\Columns\TextColumn::make('created_at')
-                    ->dateTime()
-                    ->sortable()
-                    ->toggleable(isToggledHiddenByDefault: true),
-                Tables\Columns\TextColumn::make('updated_at')
-                    ->dateTime()
-                    ->sortable()
-                    ->toggleable(isToggledHiddenByDefault: true),
             ])
             ->filters([
                 //
@@ -100,8 +70,6 @@ class AccountResource extends Resource
     {
         return [
             'index' => Pages\ListAccounts::route('/'),
-            'create' => Pages\CreateAccount::route('/create'),
-            'edit' => Pages\EditAccount::route('/{record}/edit'),
         ];
     }
 }

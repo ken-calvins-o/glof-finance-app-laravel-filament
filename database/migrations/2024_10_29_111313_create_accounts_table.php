@@ -15,10 +15,6 @@ return new class extends Migration
         Schema::create('accounts', function (Blueprint $table) {
             $table->id();
             $table->string('name');
-            $table->boolean('create_income')->default(false);
-            $table->boolean('is_general');
-            $table->string('frequency_type');
-            $table->longText('description');
             $table->timestamps();
         });
     }

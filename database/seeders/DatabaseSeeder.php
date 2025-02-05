@@ -64,6 +64,7 @@ class DatabaseSeeder extends Seeder
             ]);
         }
         $this->call([
+            AccountSeeder::class,
             MonthSeeder::class,
             YearSeeder::class,
         ]);

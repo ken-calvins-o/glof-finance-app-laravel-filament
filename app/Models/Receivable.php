@@ -90,13 +90,11 @@ class Receivable extends Model
                                 ->searchable()
                                 ->required(),
                             Select::make('account_id')
+                                ->relationship('account', 'name')
                                 ->label('Account')
-                                ->options(fn(callable $get) => self::fetchAccountOptions($get('user_id')))
                                 ->searchable()
                                 ->preload()
-                                ->required()
-                                ->reactive()
-                                ->afterStateUpdated(fn(callable $set, callable $get) => self::updateBalance($set, $get)),
+                                ->required(),
                             TextInput::make('amount_contributed')
                                 ->label('Amount')
                                 ->required()
@@ -126,19 +124,10 @@ class Receivable extends Model
         ];
     }
 
-    private static function fetchAccountOptions($userId)
-    {
-        return $userId ? AccountUser::where('user_id', $userId)
-            ->with('account:id,name')
-            ->get()
-            ->mapWithKeys(fn($accountUser) => [$accountUser->account->id => $accountUser->account->name])
-            ->toArray() : [];
-    }
-
     private static function generateHelperText(callable $get)
     {
         $balance = $get('outstanding_balance');
-        return 'Outstanding Balance: ' . ($balance ?: 'N/A');
+        return 'Outstanding Balance: ' . ($balance ?: 0.00);
     }
 
     protected static function updateBalance(callable $set, callable $get)
@@ -152,9 +141,9 @@ class Receivable extends Model
                 ->where('account_id', $accountId)
                 ->value('outstanding_balance');
 
-            $set('outstanding_balance', $balance ?? 'N/A');
+            $set('outstanding_balance', $balance ?? 0.00);
         } else {
-            $set('outstanding_balance', 'N/A');
+            $set('outstanding_balance', 0.00);
         }
     }
 }

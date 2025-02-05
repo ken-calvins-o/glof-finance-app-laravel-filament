@@ -33,14 +33,16 @@ class CreateReceivable extends CreateRecord
                 $amountContributed = $member['amount_contributed'];
                 $fromSavings = $member['from_savings'] ?? false;
 
-                // Fetch and validate the debt record
-                $debtRecord = $this->getValidatedDebtRecord($userId, $accountId, $amountContributed);
+                // Fetch the Debt record if it exists
+                $debtRecord = $this->getValidatedDebtRecord($userId, $accountId);
 
-                // Create the Receivable
+                // Use the updated `createReceivableRecord` method
                 $receivable = $this->createReceivableRecord($userId, $accountId, $amountContributed, $fromSavings);
 
-                // Update the Debt record with cumulative handling
-                $this->updateDebtRecordWithCumulativeCheck($debtRecord, $amountContributed, $userId, $accountId);
+                // Update the Debt record, if one exists
+                if ($debtRecord) {
+                    $this->updateDebtRecordWithCumulativeCheck($debtRecord, $amountContributed, $userId, $accountId);
+                }
 
                 // Update the Savings record
                 $this->updateUserSavings($userId, $amountContributed, $fromSavings);
@@ -50,30 +52,34 @@ class CreateReceivable extends CreateRecord
         });
     }
 
+
     /**
-     * Fetch and validate the Debt record for a user and account.
+     * Fetch the Debt record for a user and account, if it exists.
+     *
+     * @param int $userId
+     * @param int $accountId
+     * @return Debt|null
+     */
+    protected function getValidatedDebtRecord(int $userId, int $accountId): ?Debt
+    {
+        // Fetch the debt record
+        return Debt::where('user_id', $userId)
+            ->where('account_id', $accountId)
+            ->lockForUpdate()
+            ->first();
+    }
+
+    /**
+     * Create a Receivable record and update the user's total amount contributed.
      *
      * @param int $userId
      * @param int $accountId
      * @param float $amountContributed
-     * @return Debt
-     * @throws \Exception
+     * @param bool $fromSavings
+     * @return Receivable
      */
-    protected function getValidatedDebtRecord(int $userId, int $accountId, float $amountContributed): Debt
-    {
-        $debtRecord = Debt::where('user_id', $userId)
-            ->where('account_id', $accountId)
-            ->first();
-
-        if (!$debtRecord) {
-            throw new \Exception("No associated debt record found for user ID: {$userId} and account ID: {$accountId}.");
-        }
-
-        return $debtRecord;
-    }
-
     /**
-     * Create a Receivable record.
+     * Create a Receivable record and dynamically calculate total_amount_contributed.
      *
      * @param int $userId
      * @param int $accountId
@@ -83,10 +89,20 @@ class CreateReceivable extends CreateRecord
      */
     protected function createReceivableRecord(int $userId, int $accountId, float $amountContributed, bool $fromSavings): Receivable
     {
+        // Get the current total contributions for the account
+        $currentTotal = Receivable::where('user_id', $userId)
+            ->where('account_id', $accountId)
+            ->sum('amount_contributed'); // Sum up all contributions
+
+        // Calculate the new total contribution
+        $newTotal = $currentTotal + $amountContributed;
+
+        // Create the new Receivable record
         return Receivable::create([
             'user_id' => $userId,
             'account_id' => $accountId,
             'amount_contributed' => $amountContributed,
+            'total_amount_contributed' => $newTotal, // Set the new total contribution
             'from_savings' => $fromSavings,
         ]);
     }
@@ -104,21 +120,18 @@ class CreateReceivable extends CreateRecord
     {
         $newOutstandingBalance = $debtRecord->outstanding_balance - $amountContributed;
 
-        // Calculate the cumulative amount_contributed for this user and account from Receivables
-        $cumulativeContributions = Receivable::where('user_id', $userId)
-            ->where('account_id', $accountId)
-            ->sum('amount_contributed');
+        // Check if the outstanding balance is zero or negative
+        $debtStatus = $newOutstandingBalance <= 0 ? DebtStatusEnum::Cleared : $debtRecord->debt_status;
 
-        // Update Debt record fields
-        $updatedFields = ['outstanding_balance' => $newOutstandingBalance];
+        // Update the Debt record fields
+        $debtRecord->update([
+            'outstanding_balance' => max(0, $newOutstandingBalance), // Prevent negative balances
+            'debt_status' => $debtStatus,
+        ]);
 
-        // If cumulative contributions exceed or match the original outstanding balance, clear the debt
-        if ($cumulativeContributions >= $debtRecord->outstanding_balance) {
-            $updatedFields['debt_status'] = DebtStatusEnum::Cleared;
+        if ($debtStatus === DebtStatusEnum::Cleared) {
+            // Trigger any event or notification for clearing debt if necessary
         }
-
-        // Apply combined updates
-        $debtRecord->update($updatedFields);
     }
 
     /**
@@ -130,35 +143,41 @@ class CreateReceivable extends CreateRecord
      * @return void
      * @throws \Exception
      */
+    /**
+     * Update the Savings record for a user.
+     *
+     * @param int $userId
+     * @param float $amountContributed
+     * @param bool $fromSavings
+     * @return void
+     * @throws \Exception
+     */
     protected function updateUserSavings(int $userId, float $amountContributed, bool $fromSavings): void
     {
+        // Fetch the user's latest Saving record
         $lastSaving = Saving::where('user_id', $userId)
             ->latest('id')
             ->lockForUpdate()
             ->first();
 
+        // Get the current balance and net worth; defaults to 0 if no previous record exists
         $currentBalance = $lastSaving->balance ?? 0.00;
         $currentNetWorth = $lastSaving->net_worth ?? 0.00;
 
+        // Calculate debit and credit amounts
         $debitAmount = $fromSavings ? $amountContributed : 0.00;
-        $creditAmount = $fromSavings ? 0.00 : $amountContributed;
-        $newBalance = $currentBalance - $debitAmount;
-        $newNetWorth = $currentNetWorth;
+        $creditAmount = !$fromSavings ? $amountContributed : 0.00;
 
-        if (!$fromSavings) {
-            $newNetWorth += $amountContributed;
-        }
-//
-//        if ($newBalance < 0) {
-//            throw new \Exception("Insufficient balance in savings for user ID: {$userId}. Current Balance: {$currentBalance}, Attempted Debit Amount: {$amountContributed}.");
-//        }
+        // Update the net worth only if the contribution is not from savings
+        $newNetWorth = $currentNetWorth + $creditAmount;
 
+        // Create a new Saving record with updated details
         Saving::create([
             'user_id' => $userId,
-            'credit_amount' => $creditAmount,
-            'debit_amount' => $debitAmount,
-            'balance' => $newBalance,
-            'net_worth' => $newNetWorth,
+            'credit_amount' => $creditAmount, // New contribution if not from savings
+            'debit_amount' => $debitAmount,  // Debit if from savings
+            'balance' => $currentBalance,    // Balance remains the same
+            'net_worth' => $newNetWorth,     // Increment net worth by credit amount
         ]);
     }
 }

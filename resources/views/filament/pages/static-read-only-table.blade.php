@@ -1,12 +1,26 @@
 @php
     [$tableData, $accounts] = (new \App\Filament\Pages\StaticReadOnlyTable)->getTableData();
-    $currentDateTime = now()->format('F j, Y g:i A'); //
+
+    // Initialize a totals array to store dynamic column totals
+    $totals = [];
+
+    foreach ($tableData as $row) {
+        foreach ($row as $column => $value) {
+            // Check if the value is numeric before summing
+            if (is_numeric($value)) {
+                if (!isset($totals[$column])) {
+                    $totals[$column] = 0; // Initialize total if it doesn't exist
+                }
+                $totals[$column] += $value; // Add the value to the appropriate column total
+            }
+        }
+    }
 @endphp
 
 <x-filament::page>
     <div class="mb-4">
         <h3 class="text-lg font-semibold text-amber-600">
-            Date and Time: {{ $currentDateTime }}
+            Date and Time: {{ now()->format('F j, Y g:i A') }}
         </h3>
     </div>
     <div class="overflow-x-auto">
@@ -22,10 +36,10 @@
                     </th>
                 @endforeach
                 <th class="px-6 py-3 text-left text-sm font-bold text-gray-700 uppercase tracking-wider border-gray-300">
-                    Loan Balance
+                    Loan
                 </th>
                 <th class="px-6 py-3 text-left text-sm font-bold text-gray-700 uppercase tracking-wider border-gray-300">
-                    Savings Balance
+                    Savings
                 </th>
                 <th class="px-6 py-3 text-left text-sm font-bold text-gray-700 uppercase tracking-wider border-gray-300">
                     Net Worth
@@ -44,10 +58,10 @@
                         </td>
                     @endforeach
                     <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-700">
-                        Kes. {{ number_format($row['Loan Balance'], 2) }}
+                        Kes. {{ number_format($row['Loan'], 2) }}
                     </td>
                     <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-700">
-                        Kes. {{ number_format($row['Savings Balance'], 2) }}
+                        Kes. {{ number_format($row['Savings'], 2) }}
                     </td>
                     <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-700">
                         Kes. {{ number_format($row['Net Worth'], 2) }}

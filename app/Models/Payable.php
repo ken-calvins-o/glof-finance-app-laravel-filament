@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use Filament\Forms\Components\Fieldset;
+use Filament\Forms\Components\Radio;
 use Filament\Forms\Components\Repeater;
 use Filament\Forms\Components\Section;
 use Filament\Forms\Components\Select;
@@ -81,16 +82,15 @@ class Payable extends Model
                         ->columns(3),
                     Fieldset::make('Debit Type')
                         ->schema([
-                            ToggleButtons::make('is_general')
-                                ->label('Debit Type')
+                            Radio::make('is_general')
+                                ->label('Please select the type of debit')
                                 ->boolean()
                                 ->options([
-                                    true => 'General',
-                                    false => 'Custom',
+                                    1 => 'Shared',
+                                    0=> 'Custom',
                                 ])
                                 ->default(true)
                                 ->inline()
-                                ->grouped()
                                 ->reactive()
                                 ->columnSpanFull(),
                         ]),
@@ -118,24 +118,14 @@ class Payable extends Model
                                 ->schema([
                                     Select::make('user_id')
                                         ->label('Select Members')
-                                        ->multiple()
-                                        ->reactive()
-                                        ->options(function (callable $get) {
-                                            // Fetch the `account_id` value dynamically from the parent
-                                            $accountId = $get('account_id'); // Access `account_id` directly since it's not nested
-
-                                            // Return empty options if `account_id` is not set
-                                            if (!$accountId) {
-                                                return [];
-                                            }
-
-                                            // Fetch users associated with the given `account_id` via the pivot model
-                                            return AccountUser::where('account_id', $accountId)
-                                                ->with('user:id,name') // Load only `id` and `name` for performance
-                                                ->get()
-                                                ->mapWithKeys(fn($accountUser) => [$accountUser->user->id => $accountUser->user->name])
+                                        ->options(function () {
+                                            // Fetch all users and map them to an `id => name` structure
+                                            return \App\Models\User::all()
+                                                ->pluck('name', 'id') // Map user `name` as the display value and `id` as the key
                                                 ->toArray();
                                         })
+                                        ->multiple()
+                                        ->reactive()
                                         ->maxItems(5),
                                 ])
                                 ->visible(fn($state) => $state['is_general']),
@@ -152,20 +142,10 @@ class Payable extends Model
                                 ->schema([
                                     Select::make('user_id')
                                         ->label('Member')
-                                        ->options(function (callable $get) {
-                                            // Fetch the `account_id` value from the main form
-                                            $accountId = $get('../../account_id'); // Access parent `account_id`
-
-                                            // Return empty options if no account is selected
-                                            if (!$accountId) {
-                                                return [];
-                                            }
-
-                                            // Fetch users linked to the given `account_id` via `AccountUser` pivot model
-                                            return AccountUser::where('account_id', $accountId)
-                                                ->with('user:id,name') // Eager load the associated User model for `id` and `name`
-                                                ->get()
-                                                ->mapWithKeys(fn($accountUser) => [$accountUser->user->id => $accountUser->user->name])
+                                        ->options(function () {
+                                            // Fetch all users and map them to an `id => name` structure
+                                            return \App\Models\User::all()
+                                                ->pluck('name', 'id') // Map user `name` as the display value and `id` as the key
                                                 ->toArray();
                                         })
                                         ->searchable()
@@ -181,29 +161,40 @@ class Payable extends Model
                                         ->prefix('KES')
                                         ->reactive()
                                         ->afterStateUpdated(function (callable $get, callable $set) {
-                                            $accountId = $get('../../account_id');
+                                            // Get the selected account_id and user_id
+                                            $accountId = $get('../../account_id'); // `account_id` is outside the repeater; traverse hierarchy
                                             $userId = $get('user_id');
 
-                                            // Fetch the latest total contribution for the user and account
-                                            $totalContributed = \App\Models\Receivable::where('account_id', $accountId)
-                                                ->where('user_id', $userId)
-                                                ->latest('created_at') // Get the most recent entry
-                                                ->value('total_amount_contributed') ?? 0; // Default to 0 if not found
+                                            if ($accountId && $userId) {
+                                                // Fetch the latest "total_amount_contributed" for the selected account and user
+                                                $totalContributed = \App\Models\Receivable::where('account_id', $accountId)
+                                                    ->where('user_id', $userId)
+                                                    ->latest('created_at') // Use the most recent record
+                                                    ->value('total_amount_contributed') ?? 0; // Default to 0 if no record exists
 
-                                            // Update helper text
-                                            $set('helperText', "Total contributed: KES " . number_format($totalContributed, 2));
+                                                // Update the helper text dynamically
+                                                $set('helperText', "Total contributed: KES " . number_format($totalContributed, 2));
+                                            } else {
+                                                // Clear the helper text if account or user is not selected
+                                                $set('helperText', "Total contributed: KES 0.00");
+                                            }
                                         })
                                         ->helperText(function (callable $get) {
-                                            $accountId = $get('../../account_id');
+                                            // Get the selected account_id and user_id
+                                            $accountId = $get('../../account_id'); // `account_id` is outside the repeater; traverse hierarchy
                                             $userId = $get('user_id');
 
-                                            // Fetch total contribution
-                                            $totalContributed = Receivable::where('account_id', $accountId)
-                                                ->where('user_id', $userId)
-                                                ->latest('created_at')
-                                                ->value('total_amount_contributed') ?? 0;
+                                            if ($accountId && $userId) {
+                                                // Fetch the latest "total_amount_contributed" for the selected account and user
+                                                $totalContributed = \App\Models\Receivable::where('account_id', $accountId)
+                                                    ->where('user_id', $userId)
+                                                    ->latest('created_at') // Use the most recent record
+                                                    ->value('total_amount_contributed') ?? 0; // Default to 0 if no record exists
 
-                                            return "Total contributed: KES " . number_format($totalContributed, 2);
+                                                return "Total contributed: KES " . number_format($totalContributed, 2);
+                                            }
+
+                                            return "Total contributed: KES 0.00"; // Default if account or user is not set
                                         }),
                                     ToggleButtons::make('from_savings')
                                         ->label('Use savings')

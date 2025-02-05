@@ -13,6 +13,13 @@ class StaticReadOnlyTable extends Page
 {
     protected static string $view = 'filament.pages.static-read-only-table';
 
+    protected static ?string $navigationIcon = 'heroicon-o-presentation-chart-bar';
+
+    public static function getNavigationLabel(): string
+    {
+        return 'Group Statement';
+    }
+
     public function getTableData(): array
     {
         // Get all accounts (to create dynamic columns)
@@ -39,14 +46,17 @@ class StaticReadOnlyTable extends Page
 
             // Fetch "Savings Balance" from the savings table/model
             $savingsBalance = Saving::where('user_id', $user->id)->value('balance');
-            $row['Savings Balance'] = $savingsBalance ?? 0.00; // Default to 0.00 if null
+            $row['Savings'] = $savingsBalance ?? 0.00; // Default to 0.00 if null
 
-            // Fetch "Net Worth" from the savings table/model
-            $netWorth = Saving::where('user_id', $user->id)->value('net_worth');
+            // Fetch the latest "Net Worth" from the savings table/model
+            $netWorth = Saving::where('user_id', $user->id)
+                ->latest('id') // Get the latest record based on primary key "id"
+                ->value('net_worth');
+
             $row['Net Worth'] = $netWorth ?? 0.00; // Default to 0.00 if null
 
             $loanBalance = Loan::where('user_id', $user->id)->value('balance');
-            $row['Loan Balance'] = $loanBalance ?? 0.00;
+            $row['Loan'] = $loanBalance ?? 0.00;
 
             $data[] = $row; // Add user row to data
         }
