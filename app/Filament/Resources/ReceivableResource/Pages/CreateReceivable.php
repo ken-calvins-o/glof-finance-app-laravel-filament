@@ -60,7 +60,7 @@ class CreateReceivable extends CreateRecord
      * @param int $receivableId
      * @return void
      */
-    protected function updateOrCreateAccountCollection(int $userId, int $accountId, float $amountContributed, int $receivableId): void
+    protected function updateOrCreateAccountCollection(int $userId, int $accountId, float $amountContributed): void
     {
         // Modify or create a new record in the pivot table
         AccountCollection::updateOrCreate(
@@ -70,7 +70,6 @@ class CreateReceivable extends CreateRecord
             ],
             [
                 'amount' => DB::raw("COALESCE(amount, 0) + $amountContributed"),
-                'receivable_id' => $receivableId, // Add the receivable_id value here
             ]
         );
     }

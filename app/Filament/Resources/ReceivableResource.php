@@ -25,7 +25,20 @@ class ReceivableResource extends Resource
 
     public static function getPluralLabel(): string
     {
-        return 'Receivables (Credits)'; // This changes the plural form displayed in the UI
+        return 'Collections (Credits/Receivables)'; // This changes the plural form displayed in the UI
+    }
+
+    /**
+     * @return string|null
+     */
+    public static function getNavigationLabel(): string
+    {
+        return 'Collections'; // This changes the plural form displayed in the UI
+    }
+
+    public static function getLabel(): ?string
+    {
+        return 'collection'; // This changes the plural form displayed in the UI
     }
 
     protected static ?string $navigationIcon = 'heroicon-o-arrows-pointing-in';
@@ -59,7 +72,7 @@ class ReceivableResource extends Resource
                 Tables\Columns\TextColumn::make('amount_contributed')
                     ->label('Amount Contributed')
                     ->sortable()
-                    ->formatStateUsing(fn($state) => 'KES ' . number_format($state, 2)),
+                    ->formatStateUsing(fn($state) => 'Kes ' . number_format($state, 2)),
                 Tables\Columns\TextColumn::make('months')
                     ->label('Allocated Month')
                     ->getStateUsing(fn ($record) => $record->months->pluck('name')->implode(', ') ?? 'N/A')

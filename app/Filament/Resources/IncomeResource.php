@@ -60,13 +60,13 @@ class IncomeResource extends Resource
                 // Display the interest amount
                 TextColumn::make('interest_amount')
                     ->label('Interest Amount')
-                    ->prefix('KES ')
+                    ->prefix('Kes ')
                     ->formatStateUsing(fn($state) => number_format($state, 2))
                     ->numeric()
                     ->sortable()
                     ->toggleable(isToggledHiddenByDefault: true),
                 TextColumn::make('income_amount')
-                    ->prefix('KES ')
+                    ->prefix('Kes ')
                     ->formatStateUsing(fn($state) => number_format($state ?? 0.00, 2)) // Use 0.00 if $state is empty
                     ->numeric()
                     ->sortable()

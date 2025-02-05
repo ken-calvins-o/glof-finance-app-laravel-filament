@@ -46,7 +46,7 @@ class UserResource extends Resource
                 Tables\Columns\TextColumn::make('email')
                     ->searchable(),
                 Tables\Columns\TextColumn::make('registration_fee')
-                    ->prefix('KES ')
+                    ->prefix('Kes ')
                     ->formatStateUsing(fn($state) => number_format($state, 2))
                     ->searchable(),
                 Tables\Columns\TextColumn::make('member_status')

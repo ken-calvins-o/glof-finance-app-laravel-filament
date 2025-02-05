@@ -63,23 +63,23 @@ class SavingResource extends Resource
                 // Add cumulative amount column
                 Tables\Columns\TextColumn::make('credit_amount')
                     ->label('Credit Amount')
-                    ->prefix('KES ')
+                    ->prefix('Kes ')
                     ->formatStateUsing(fn($state) => number_format($state, 2))
                     ->searchable(),
                 Tables\Columns\TextColumn::make('debit_amount')
                     ->label('Debit Amount')
-                    ->prefix('KES ')
+                    ->prefix('Kes ')
                     ->formatStateUsing(fn($state) => number_format($state, 2))
                     ->searchable(),
                 Tables\Columns\TextColumn::make('balance')
                     ->label('Savings Balance')
-                    ->prefix('KES ')
+                    ->prefix('Kes ')
                     ->formatStateUsing(fn($state) => number_format($state, 2))
                     ->searchable(),
 
                 // Add cumulative net worth column
                 Tables\Columns\TextColumn::make('net_worth')
-                    ->prefix('KES ')
+                    ->prefix('Kes ')
                     ->formatStateUsing(fn($state) => number_format($state, 2))
                     ->searchable(),
                 Tables\Columns\TextColumn::make('created_at')

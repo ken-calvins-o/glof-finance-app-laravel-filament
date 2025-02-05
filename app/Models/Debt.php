@@ -73,14 +73,14 @@ class Debt extends Model
                                 ->numeric()
                                 ->disabled()
                                 ->hintIcon('heroicon-o-currency-dollar')
-                                ->prefix('KES')
+                                ->prefix('Kes')
                                 ->minValue(1),
                             TextInput::make('repayment_amount')
                                 ->label('Enter Amount')
                                 ->required()
                                 ->numeric()
                                 ->hintIcon('heroicon-o-currency-dollar')
-                                ->prefix('KES')
+                                ->prefix('Kes')
                                 ->minValue(1),
                         ]),
 

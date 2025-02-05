@@ -189,7 +189,7 @@ class Contribution extends Model
                         ->required()
                         ->numeric()
                         ->hintIcon('heroicon-o-currency-dollar')
-                        ->prefix('KES')
+                        ->prefix('Kes')
                         ->minValue(1)
                         ->helperText(function (callable $get) {
                             $userId = $get('user_id');
@@ -202,7 +202,7 @@ class Contribution extends Model
                                     ->first();
 
                                 return $debt
-                                    ? "Outstanding balance for this account: KES " . number_format($debt->balance, 2)
+                                    ? "Outstanding balance for this account: Kes " . number_format($debt->balance, 2)
                                     : "No outstanding balance for this account.";
                             }
 

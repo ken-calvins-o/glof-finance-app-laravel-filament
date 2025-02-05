@@ -58,7 +58,7 @@ class PayableResource extends Resource
                     ->getStateUsing(fn ($record) => $record->years->pluck('year')->implode(', ') ?? 'N/A')
                     ->sortable(),
                 TextColumn::make('total_amount')
-                    ->prefix('KES ')
+                    ->prefix('Kes ')
                     ->formatStateUsing(fn($state) => number_format($state, 2))
                     ->numeric()
                     ->sortable(),

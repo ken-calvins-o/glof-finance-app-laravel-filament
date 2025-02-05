@@ -51,7 +51,7 @@ class Saving extends Model
                         ->required()
                         ->numeric()
                         ->hintIcon('heroicon-o-currency-dollar')
-                        ->prefix('KES'),
+                        ->prefix('Kes'),
                 ]),
         ];
 

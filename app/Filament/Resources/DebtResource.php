@@ -62,7 +62,7 @@ class DebtResource extends Resource
                         return $record->account->name ?? 'Credited Loan';
                     }),
                 Tables\Columns\TextColumn::make('outstanding_balance')
-                    ->prefix('KES ')
+                    ->prefix('Kes ')
                     ->formatStateUsing(fn($state) => number_format($state, 2))
                     ->searchable(),
                 Tables\Columns\TextColumn::make('debt_status')

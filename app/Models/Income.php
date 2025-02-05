@@ -45,7 +45,7 @@ class Income extends Model
                     ->numeric()
                     ->minValue('1')
                     ->hintIcon('heroicon-o-currency-dollar')
-                    ->prefix('KES'),
+                    ->prefix('Kes'),
                 TextInput::make('description')
                     ->maxLength(255)
                     ->default(null),

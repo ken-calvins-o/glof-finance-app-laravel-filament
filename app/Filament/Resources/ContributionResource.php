@@ -44,7 +44,7 @@ class ContributionResource extends Resource
                     ->numeric()
                     ->sortable(),
                 Tables\Columns\TextColumn::make('amount')
-                    ->prefix('KES ')
+                    ->prefix('Kes ')
                     ->formatStateUsing(fn($state) => number_format($state, 2))
                     ->searchable(),
                 Tables\Columns\TextColumn::make('payment_status')

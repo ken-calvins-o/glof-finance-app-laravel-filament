@@ -98,7 +98,7 @@ class Payable extends Model
                         ->schema([
                             TextInput::make('total_amount')
                                 ->label('Amount')
-                                ->prefix('KES')
+                                ->prefix('Kes')
                                 ->helperText('This amount is the same for all members')
                                 ->reactive()
                                 ->numeric()
@@ -158,7 +158,7 @@ class Payable extends Model
                                         ->numeric()
                                         ->minValue(1)
                                         ->hintIcon('heroicon-o-currency-dollar')
-                                        ->prefix('KES')
+                                        ->prefix('Kes')
                                         ->reactive()
                                         ->afterStateUpdated(function (callable $get, callable $set) {
                                             // Get the selected account_id and user_id
@@ -173,10 +173,10 @@ class Payable extends Model
                                                     ->value('total_amount_contributed') ?? 0; // Default to 0 if no record exists
 
                                                 // Update the helper text dynamically
-                                                $set('helperText', "Total contributed: KES " . number_format($totalContributed, 2));
+                                                $set('helperText', "Total contributed: Kes " . number_format($totalContributed, 2));
                                             } else {
                                                 // Clear the helper text if account or user is not selected
-                                                $set('helperText', "Total contributed: KES 0.00");
+                                                $set('helperText', "Total contributed: Kes 0.00");
                                             }
                                         })
                                         ->helperText(function (callable $get) {
@@ -191,10 +191,10 @@ class Payable extends Model
                                                     ->latest('created_at') // Use the most recent record
                                                     ->value('total_amount_contributed') ?? 0; // Default to 0 if no record exists
 
-                                                return "Total contributed: KES " . number_format($totalContributed, 2);
+                                                return "Total contributed: Kes " . number_format($totalContributed, 2);
                                             }
 
-                                            return "Total contributed: KES 0.00"; // Default if account or user is not set
+                                            return "Total contributed: Kes 0.00"; // Default if account or user is not set
                                         }),
                                     ToggleButtons::make('from_savings')
                                         ->label('Use savings')

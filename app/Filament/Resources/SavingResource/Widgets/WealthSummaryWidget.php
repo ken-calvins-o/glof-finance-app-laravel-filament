@@ -32,11 +32,11 @@ class WealthSummaryWidget extends BaseWidget
         $totalNetWorth = $query->sum('net_worth');
 
         return [
-            Stat::make('Total Savings', 'KES ' . number_format($totalSavings, 2))
+            Stat::make('Total Savings', 'Kes ' . number_format($totalSavings, 2))
                 ->icon('heroicon-s-currency-dollar') // User group icon
                 ->extraAttributes(['class' => 'text-sm']),
 
-            Stat::make('Total Net Worth', 'KES ' . number_format($totalNetWorth, 2))
+            Stat::make('Total Net Worth', 'Kes ' . number_format($totalNetWorth, 2))
                 ->icon('heroicon-s-currency-dollar') // User group icon
                 ->extraAttributes(['class' => 'text-sm']),
         ];

@@ -120,7 +120,7 @@ class User extends Authenticatable
                         ->numeric()
                         ->minValue(1)
                         ->hintIcon('heroicon-o-currency-dollar')
-                        ->prefix('KES'),
+                        ->prefix('Kes'),
                     TextInput::make('password')
                         ->password()
                         ->revealable()

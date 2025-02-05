@@ -113,7 +113,7 @@ class Receivable extends Model
                                 ->minValue(1)
                                 ->numeric()
                                 ->hintIcon('heroicon-o-currency-dollar')
-                                ->prefix('KES')
+                                ->prefix('Kes')
                                 ->helperText(function (callable $get) {
                                     $accountId = $get('account_id'); // Get the selected account_id
                                     $userId = $get('user_id'); // Get the selected user_id

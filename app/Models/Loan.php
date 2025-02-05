@@ -58,7 +58,7 @@ class Loan extends Model
                                 ->numeric()
                                 ->label('Amount Requested')
                                 ->hintIcon('heroicon-o-currency-dollar')
-                                ->prefix('KES')
+                                ->prefix('Kes')
                                 ->maxLength(255)
                                 ->reactive()  // Make the input reactive
                                 ->afterStateUpdated(fn(callable $set, $state) => $set('balance', $state * 1.01)),  // Set balance as amount + 1% interest
@@ -79,9 +79,9 @@ class Loan extends Model
                             TextInput::make('balance')
                                 ->label('Balance (Amount + 1% Interest)')
                                 ->hintIcon('heroicon-o-currency-dollar')
-                                ->prefix('KES')
+                                ->prefix('Kes')
                                 ->maxLength(255)
-                                ->readonly()  // Makes it read-only but included in form submission
+                                ->readonly()  // MaKes it read-only but included in form submission
                                 ->reactive(),
                             TextInput::make('interest')
                                 ->label('Percentage per month')
