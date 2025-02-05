@@ -45,7 +45,9 @@ class StaticReadOnlyTable extends Page
             }
 
             // Fetch "Savings Balance" from the savings table/model
-            $savingsBalance = Saving::where('user_id', $user->id)->value('balance');
+            $savingsBalance = Saving::where('user_id', $user->id)
+                ->latest('id') // Get the latest record based on primary key "id"
+                ->value('balance');
             $row['Savings'] = $savingsBalance ?? 0.00; // Default to 0.00 if null
 
             // Fetch the latest "Net Worth" from the savings table/model
