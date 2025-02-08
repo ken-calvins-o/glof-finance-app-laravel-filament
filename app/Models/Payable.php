@@ -50,7 +50,7 @@ class Payable extends Model
             ->where('account_id', $this->account_id);
     }
 
-    public static function getForm()
+    public static function getForm(): array
     {
         return [
             Section::make('Payable Details')
@@ -144,7 +144,7 @@ class Payable extends Model
                                         ->label('Member')
                                         ->options(function () {
                                             // Fetch all users and map them to an `id => name` structure
-                                            return \App\Models\User::all()
+                                            return User::all()
                                                 ->pluck('name', 'id') // Map user `name` as the display value and `id` as the key
                                                 ->toArray();
                                         })
@@ -159,43 +159,7 @@ class Payable extends Model
                                         ->minValue(1)
                                         ->hintIcon('heroicon-o-currency-dollar')
                                         ->prefix('Kes')
-                                        ->reactive()
-                                        ->afterStateUpdated(function (callable $get, callable $set) {
-                                            // Get the selected account_id and user_id
-                                            $accountId = $get('../../account_id'); // `account_id` is outside the repeater; traverse hierarchy
-                                            $userId = $get('user_id');
-
-                                            if ($accountId && $userId) {
-                                                // Fetch the latest "total_amount_contributed" for the selected account and user
-                                                $totalContributed = \App\Models\Receivable::where('account_id', $accountId)
-                                                    ->where('user_id', $userId)
-                                                    ->latest('created_at') // Use the most recent record
-                                                    ->value('total_amount_contributed') ?? 0; // Default to 0 if no record exists
-
-                                                // Update the helper text dynamically
-                                                $set('helperText', "Total contributed: Kes " . number_format($totalContributed, 2));
-                                            } else {
-                                                // Clear the helper text if account or user is not selected
-                                                $set('helperText', "Total contributed: Kes 0.00");
-                                            }
-                                        })
-                                        ->helperText(function (callable $get) {
-                                            // Get the selected account_id and user_id
-                                            $accountId = $get('../../account_id'); // `account_id` is outside the repeater; traverse hierarchy
-                                            $userId = $get('user_id');
-
-                                            if ($accountId && $userId) {
-                                                // Fetch the latest "total_amount_contributed" for the selected account and user
-                                                $totalContributed = \App\Models\Receivable::where('account_id', $accountId)
-                                                    ->where('user_id', $userId)
-                                                    ->latest('created_at') // Use the most recent record
-                                                    ->value('total_amount_contributed') ?? 0; // Default to 0 if no record exists
-
-                                                return "Total contributed: Kes " . number_format($totalContributed, 2);
-                                            }
-
-                                            return "Total contributed: Kes 0.00"; // Default if account or user is not set
-                                        }),
+                                        ->reactive(),
                                     ToggleButtons::make('from_savings')
                                         ->label('Use savings')
                                         ->boolean()

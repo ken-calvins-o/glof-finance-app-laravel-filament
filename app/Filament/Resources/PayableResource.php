@@ -96,7 +96,6 @@ class PayableResource extends Resource
         return [
             'index' => Pages\ListPayables::route('/'),
             'create' => Pages\CreatePayable::route('/create'),
-//            'edit' => Pages\EditPayable::route('/{record}/edit'),
         ];
     }
 }
