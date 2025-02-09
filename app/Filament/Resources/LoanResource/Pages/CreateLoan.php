@@ -22,44 +22,59 @@ class CreateLoan extends CreateRecord
      */
     protected function handleRecordCreation(array $data): Loan
     {
-        // Use a database transaction to ensure atomicity for the entire process
         return DB::transaction(function () use ($data) {
-            // Set default values for interest and balance based on `apply_interest`
-            $interestAmount = 0;
-            $balance = $data['amount']; // Default balance is the loan amount
+            // Calculate interest and final balance
+            [$interestAmount, $balance] = $this->calculateInterestAndBalance($data);
 
-            if ($data['apply_interest']) {
-                // Calculate the interest as 1% of the loan amount
-                $interestAmount = $data['amount'] * 0.01;
+            // Create the loan record
+            $loan = $this->createLoanRecord($data, $balance, $interestAmount);
 
-                // Add the interest to the balance
-                $balance += $interestAmount;
-            }
-
-            // Create the loan record in the database
-            $loan = static::getModel()::create(array_merge($data, [
-                'balance' => $balance, // Apply the calculated balance
-                'interest' => $interestAmount, // Save the interest
-            ]));
-
-            // Create a new Income record for the loan interest only if `apply_interest` is true
+            // Create Income record if interest is applied
             if ($interestAmount > 0) {
                 $this->createIncomeRecord($loan->user_id, $interestAmount);
             }
 
-            // Retrieve the current Saving record to derive net worth and balance
-            $currentSaving = Saving::where('user_id', $loan->user_id)->first();
-            $currentNetWorth = $currentSaving->net_worth ?? 0;
-            $currentBalance = $currentSaving->balance ?? 0;
-
-            // Create a new Saving record for the user to reflect the loan
-            $this->createSavingRecord($loan, $currentNetWorth, $currentBalance);
-
-            // Create a new Debt record for the user with the loan's remaining balance
-            $this->createDebtRecord($loan->user_id, $loan->balance);
+            // Update user financial records (savings and debts)
+            $this->updateUserFinancialRecords($loan);
 
             return $loan;
         });
+    }
+
+    /**
+     * Calculate the interest amount and the total balance.
+     *
+     * @param array $data
+     * @return array [interestAmount, balance]
+     */
+    private function calculateInterestAndBalance(array $data): array
+    {
+        if ($data['apply_interest']) {
+            $interestAmount = $data['amount'] * 0.01; // Interest is 1% of loan amount
+            $balance = $data['amount'] + $interestAmount;
+        } else {
+            $interestAmount = 0;
+            $balance = $data['amount'];
+        }
+
+        return [$interestAmount, $balance];
+    }
+
+    /**
+     * Create the loan record in the database.
+     *
+     * @param array $data
+     * @param float $balance
+     * @param float $interestAmount
+     * @return Loan
+     */
+    private function createLoanRecord(array $data, float $balance, float $interestAmount): Loan
+    {
+        // Save the loan record
+        return static::getModel()::create(array_merge($data, [
+            'balance' => $balance,
+            'interest' => $interestAmount,
+        ]));
     }
 
     /**
@@ -73,38 +88,60 @@ class CreateLoan extends CreateRecord
     {
         Income::create([
             'user_id' => $userId,
-            'origin' => 'Loan', // Mark the origin as "Loan"
+            'origin' => 'Loan',
             'interest_amount' => $interestAmount,
         ]);
     }
 
     /**
-     * Create a Saving record to reflect the loan's impact on net worth.
+     * Update user savings and debts based on the new loan.
      *
      * @param Loan $loan
-     * @param float $currentNetWorth
-     * @param float $currentBalance
      * @return void
      */
-    private function createSavingRecord(Loan $loan, float $currentNetWorth, float $currentBalance): void
+    private function updateUserFinancialRecords(Loan $loan): void
     {
-        // Determine the credit amount based on interest application
+        // Fetch the most recent saving record for the user
+        $currentSaving = Saving::where('user_id', $loan->user_id)
+            ->orderBy('created_at', 'desc')
+            ->firstOrFail(); // Ensure the latest is fetched
+
+        // Update the savings record
+        $this->updateSavings($loan, $currentSaving);
+
+        // Create a debt record for the loan balance
+        $this->createDebtRecord($loan->user_id, $loan->balance);
+    }
+
+    /**
+     * Update the user's saving records to reflect the loan.
+     *
+     * @param Loan $loan
+     * @param Saving $currentSaving
+     * @return void
+     */
+    private function updateSavings(Loan $loan, Saving $currentSaving): void
+    {
+        $currentNetWorth = $currentSaving->net_worth ?? 0;
+
+        // Use `amount` to reduce net worth unless interest is applied
         $creditAmount = $loan->apply_interest ? $loan->amount + $loan->interest : $loan->amount;
 
-        // Calculate the net worth strictly by subtracting the credit amount
+        // Calculate the new net worth
         $newNetWorth = $currentNetWorth - $creditAmount;
 
+        // Save the updated saving record
         Saving::create([
             'user_id' => $loan->user_id,
-            'credit_amount' => $loan->amount, // Credit the loan amount
-            'debit_amount' => 0, // No debit in this transaction
-            'net_worth' => $newNetWorth, // Adjust net worth strictly
-            'balance' => $currentBalance, // Preserve the current balance
+            'credit_amount' => $loan->amount,
+            'debit_amount' => 0,
+            'net_worth' => $newNetWorth,
+            'balance' => $currentSaving->balance ?? 0,
         ]);
     }
 
     /**
-     * Create a Debt record to track the user's outstanding balance on the loan.
+     * Create a Debt record for the user's outstanding balance on the loan.
      *
      * @param int $userId
      * @param float $outstandingBalance
@@ -114,7 +151,7 @@ class CreateLoan extends CreateRecord
     {
         Debt::create([
             'user_id' => $userId,
-            'outstanding_balance' => $outstandingBalance, // Record the loan's balance
+            'outstanding_balance' => $outstandingBalance,
         ]);
     }
 }
