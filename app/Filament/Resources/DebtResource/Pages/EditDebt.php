@@ -7,6 +7,7 @@ use App\Filament\Resources\DebtResource;
 use App\Models\Debt;
 use App\Models\Loan;
 use App\Models\Saving;
+use App\Models\AccountCollection;
 use Filament\Actions;
 use Filament\Resources\Pages\EditRecord;
 use Illuminate\Support\Facades\DB;
@@ -87,7 +88,19 @@ class EditDebt extends EditRecord
                 'net_worth' => $currentNetWorth,                           // Keep net worth unchanged
             ]);
 
-            // Step 6: Return the updated Debt record
+            // Step 6: Update AccountCollection to save repayment amount
+            $accountCollection = AccountCollection::firstOrNew([
+                'account_id' => $record->account_id,
+                'user_id' => $record->user_id,
+            ]);
+
+            // Add repayment_amount to the existing amount
+            $accountCollection->amount = ($accountCollection->amount ?? 0) + $newRepaymentAmount;
+
+            // Save AccountCollection
+            $accountCollection->save();
+
+            // Step 7: Return the updated Debt record
             return $record;
         });
     }
