@@ -21,31 +21,11 @@ class DatabaseSeeder extends Seeder
         // Seed users and savings
         $users = [
             [
-                'name' => 'Kennedy Calvins',
-                'email' => 'ken.calvins.o@gmail.com',
-                'registration_fee' => 10000,
+                'name' => 'John Owegi',
+                'email' => 'admin@glof.co.ke',
+                'registration_fee' => 1000,
                 'password' => $defaultPassword,
-            ],
-            [
-                'name' => 'Jane Doe',
-                'email' => 'jane.doe@example.com',
-                'registration_fee' => 10000,
-                'password' => $defaultPassword,
-                'role' => RoleEnum::Member
-            ],
-            [
-                'name' => 'John Smith',
-                'email' => 'john.smith@example.com',
-                'registration_fee' => 10000,
-                'password' => $defaultPassword,
-                'role' => RoleEnum::Member
-            ],
-            [
-                'name' => 'Alice Johnson',
-                'email' => 'alice.johnson@example.com',
-                'registration_fee' => 10000,
-                'password' => $defaultPassword,
-                'role' => RoleEnum::Member
+                'role' => RoleEnum::Administrator
             ],
         ];
 
@@ -53,7 +33,7 @@ class DatabaseSeeder extends Seeder
             $user = User::factory()->create($userData);
 
             // Generate a fixed amount and use it for both amount and net_worth
-            $fixedAmount = rand(5000, 20000); // Random fixed amount between 5000 and 20000
+            $fixedAmount = 1000; // Random fixed amount between 5000 and 20000
 
             Saving::create([
                 'user_id' => $user->id,

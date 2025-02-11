@@ -110,7 +110,6 @@ class Receivable extends Model
                                 ->required()
                                 ->lazy() // Will only be updated when the user explicitly enters a value.
                                 ->live()
-                                ->minValue(1)
                                 ->numeric()
                                 ->hintIcon('heroicon-o-currency-dollar')
                                 ->prefix('Kes')
