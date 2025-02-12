@@ -85,20 +85,8 @@ class EditDebt extends EditRecord
                 'credit_amount' => $fromSavings ? 0 : $newRepaymentAmount,  // Credit only when NOT from savings
                 'debit_amount' => $fromSavings ? $newRepaymentAmount : 0,  // Debit only when from savings
                 'balance' => $newBalance,
-                'net_worth' => $currentNetWorth,                           // Keep net worth unchanged
+                'net_worth' => $currentNetWorth + $newRepaymentAmount,                           // Keep net worth unchanged
             ]);
-
-            // Step 6: Update AccountCollection to save repayment amount
-            $accountCollection = AccountCollection::firstOrNew([
-                'account_id' => $record->account_id,
-                'user_id' => $record->user_id,
-            ]);
-
-            // Add repayment_amount to the existing amount
-            $accountCollection->amount = ($accountCollection->amount ?? 0) + $newRepaymentAmount;
-
-            // Save AccountCollection
-            $accountCollection->save();
 
             // Step 7: Return the updated Debt record
             return $record;

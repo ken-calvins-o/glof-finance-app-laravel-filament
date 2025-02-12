@@ -126,7 +126,7 @@ class Payable extends Model
                                         })
                                         ->multiple()
                                         ->reactive()
-                                        ->maxItems(5),
+                                        ->maxItems(8),
                                 ])
                                 ->visible(fn($state) => $state['is_general']),
                         ])
