@@ -5,7 +5,6 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Group Statement</title>
     <style>
-        /* Set page orientation to landscape */
         @page {
             size: A4 landscape;
             margin: 20mm;
@@ -17,7 +16,7 @@
             color: #333;
             margin: 0;
             padding: 0;
-            position: relative; /* Important for positioning watermark */
+            position: relative;
         }
 
         .watermark {
@@ -26,10 +25,10 @@
             left: 50%;
             transform: translate(-50%, -50%);
             font-size: 100px;
-            color: rgba(200, 200, 200, 0.2); /* Light grey and transparent for watermark effect */
+            color: rgba(200, 200, 200, 0.2);
             font-weight: bold;
             text-transform: uppercase;
-            z-index: -1; /* Ensures the watermark stays behind text */
+            z-index: -1;
             white-space: nowrap;
         }
 
@@ -91,14 +90,32 @@
 <div class="watermark">GULF</div>
 
 <div class="header">
-    <h2>Group Statement</h2>
+    <h2>Gulf Group Statement</h2>
     <p>Date: {{ now()->format('F j, Y g:i A') }}</p>
+    <p>Monetary values are provided in Kenyan Shillings (KES).</p>
 </div>
+
+@php
+    // Fetch data and accounts:
+    [$tableData, $accounts] = (new \App\Filament\Pages\StaticReadOnlyTable)->getTableData();
+
+    // Initialize and compute totals:
+    $totals = collect();
+
+    foreach ($tableData as $row) {
+        foreach ($row as $column => $value) {
+            if (is_numeric($value)) {
+                $totals[$column] = ($totals[$column] ?? 0) + $value;
+            }
+        }
+    }
+@endphp
 
 <table class="table">
     <thead>
     <tr>
         <th>Member Name</th>
+        <th>Registration Fee</th>
         @foreach ($accounts as $account)
             <th>{{ $account->name }}</th>
         @endforeach
@@ -108,22 +125,41 @@
     </tr>
     </thead>
     <tbody>
-    @foreach ($data as $row)
+    @foreach ($tableData as $row)
         <tr>
             <td>{{ $row['User'] }}</td>
+            <td>{{ number_format($row['Registration Fee'] ?? 0, 2) }}</td>
             @foreach ($accounts as $account)
-                <td>{{ number_format($row['Account ' . $account->id] ?? 0, 2) }}</td>
+                <td>{{ number_format($row[$account->name] ?? 0, 2) }}</td>
             @endforeach
-            <td>{{ number_format($row['Loan'], 2) }}</td>
-            <td>{{ number_format($row['Savings'], 2) }}</td>
-            <td>{{ number_format($row['Net Worth'], 2) }}</td>
+            <td>{{ number_format($row['Loan'] ?? 0, 2) }}</td>
+            <td>{{ number_format($row['Savings'] ?? 0, 2) }}</td>
+            <td>{{ number_format($row['Net Worth'] ?? 0, 2) }}</td>
         </tr>
     @endforeach
     </tbody>
+
+    <!-- Totals Row -->
+    <tfoot>
+    <tr>
+        <th>Totals</th>
+        <td>
+            <strong>
+                {{ number_format($totals['Registration Fee'] ?? 0, 2) }}
+            </strong>
+        </td>
+        @foreach ($accounts as $account)
+            <td><strong>{{ number_format($totals[$account->name] ?? 0, 2) }}</strong></td>
+        @endforeach
+        <td><strong>{{ number_format($totals['Loan'] ?? 0, 2) }}</strong></td>
+        <td><strong>{{ number_format($totals['Savings'] ?? 0, 2) }}</strong></td>
+        <td><strong>{{ number_format($totals['Net Worth'] ?? 0, 2) }}</strong></td>
+    </tr>
+    </tfoot>
 </table>
 
 <div class="footer">
-    <p>Generated on {{ now()->format('F j, Y g:i A') }} by {{auth()->user()->name}}  | Glof Group Statement </p>
+    <p>Generated on {{ now()->format('F j, Y g:i A') }} by {{auth()->user()->name}} | Glof Group Statement </p>
 </div>
 </body>
 </html>

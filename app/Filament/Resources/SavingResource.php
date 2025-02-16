@@ -23,7 +23,7 @@ class SavingResource extends Resource
 
     public static function getPluralLabel(): string
     {
-        return 'Statements'; // This changes the plural form displayed in the UI
+        return 'Transaction Logs'; // This changes the plural form displayed in the UI
     }
 
     public static function getNavigationBadge(): ?string
@@ -130,7 +130,7 @@ class SavingResource extends Resource
     {
         return [
             'index' => Pages\ListSavings::route('/'),
-            'create' => Pages\CreateSaving::route('/create'),
+//            'create' => Pages\CreateSaving::route('/create'),
 //            'edit' => Pages\EditSaving::route('/{record}/edit'),
         ];
     }

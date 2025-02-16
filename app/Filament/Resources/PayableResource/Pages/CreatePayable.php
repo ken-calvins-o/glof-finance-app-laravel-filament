@@ -5,6 +5,7 @@ namespace App\Filament\Resources\PayableResource\Pages;
 use App\Filament\Resources\PayableResource;
 use App\Models\AccountCollection;
 use App\Models\Debt;
+use App\Models\Income;
 use App\Models\MonthlyPayable;
 use App\Models\Payable;
 use App\Models\PayableYear;
@@ -73,6 +74,12 @@ class CreatePayable extends CreateRecord
                 $debt = Debt::firstOrNew([
                     'account_id' => $data['account_id'],
                     'user_id' => $user->id,
+                ]);
+
+                Income::create([
+                    'account_id' => $data['account_id'],
+                    'user_id' => $user->id,
+                    'interest_amount' => $interest,
                 ]);
 
                 if ($debt->exists) {

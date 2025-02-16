@@ -10,7 +10,6 @@ use App\Models\User;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Filament\Pages\Actions\Action;
 use Filament\Pages\Page;
-use Maatwebsite\Excel\Facades\Excel;
 
 class StaticReadOnlyTable extends Page
 {
@@ -33,6 +32,7 @@ class StaticReadOnlyTable extends Page
 
         // Preparing the table data
         $data = [];
+
         foreach ($users as $user) {
             $row = ['User' => $user->name]; // Assuming "name" exists in the users table
 
@@ -42,27 +42,32 @@ class StaticReadOnlyTable extends Page
                     ->where('account_id', $account->id)
                     ->value('amount'); // Assuming this field exists in the receivables table
 
-                // Add to the row
-                $row['Account ' . $account->id] = $latestContribution ?? 0.00;
+                // Use the actual account name as the key
+                $row[$account->name] = $latestContribution ?? 0.00;
             }
+
+            // Registration Fee from User model
+            $row['Registration Fee'] = $user->registration_fee ?? 0.00;
 
             // Fetch "Savings Balance" from the savings table/model
             $savingsBalance = Saving::where('user_id', $user->id)
                 ->latest('id') // Get the latest record based on primary key "id"
                 ->value('balance');
+
             $row['Savings'] = $savingsBalance ?? 0.00; // Default to 0.00 if null
 
             // Fetch the latest "Net Worth" from the savings table/model
             $netWorth = Saving::where('user_id', $user->id)
                 ->latest('id') // Get the latest record based on primary key "id"
                 ->value('net_worth');
-
             $row['Net Worth'] = $netWorth ?? 0.00; // Default to 0.00 if null
 
+            // Fetch loan balance
             $loanBalance = Loan::where('user_id', $user->id)->value('balance');
             $row['Loan'] = $loanBalance ?? 0.00;
 
-            $data[] = $row; // Add user row to data
+            // Add user row to data
+            $data[] = $row;
         }
 
         return [$data, $accounts];
@@ -80,7 +85,7 @@ class StaticReadOnlyTable extends Page
             foreach ($accounts as $account) {
                 $exportRow[$account->name] = $row['Account ' . $account->id] ?? 0.00;
             }
-
+            $exportRow['Registration Fee'] = $row['Registration Fee'] ?? 0.00;
             $exportRow['Loan'] = $row['Loan'] ?? 0.00;
             $exportRow['Savings'] = $row['Savings'] ?? 0.00;
             $exportRow['Net Worth'] = $row['Net Worth'] ?? 0.00;
@@ -96,7 +101,7 @@ class StaticReadOnlyTable extends Page
         return [
             // CSV Export Action
             Action::make('export_csv')
-                ->label('Export to Excel')
+                ->label('Download to Excel')
                 ->icon('heroicon-o-arrow-down-tray')
                 ->color('success')
                 ->action(function () {
@@ -115,7 +120,7 @@ class StaticReadOnlyTable extends Page
                         }
 
                         fclose($file);
-                    }, 'group_statement_' . date('Y_m_d_His') . '.csv');
+                    }, 'gulf_group_statement_' . date('Y_m_d_His') . '.csv');
                 }),
 
             // PDF Export Action
@@ -133,7 +138,7 @@ class StaticReadOnlyTable extends Page
                     ]);
 
                     // Stream the generated PDF file to the browser for download
-                    return response()->streamDownload(fn () => print($pdf->output()), 'group_statement_' . date('Y_m_d_His') . '.pdf');
+                    return response()->streamDownload(fn () => print($pdf->output()), 'gulf_group_statement_' . date('Y_m_d_His') . '.pdf');
                 }),
         ];
     }

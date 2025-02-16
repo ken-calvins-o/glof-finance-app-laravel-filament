@@ -4,6 +4,7 @@ namespace App\Models;
 
 use Filament\Forms\Components\DateTimePicker;
 use Filament\Forms\Components\Section;
+use Filament\Forms\Components\Select;
 use Filament\Forms\Components\TextInput;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
@@ -36,22 +37,28 @@ class Income extends Model
                 ->icon('heroicon-s-pencil-square')
                 ->columns(['md' => 2, 'lg' => 2])
             ->schema([
-                TextInput::make('source')
-                    ->required()
-                    ->maxLength(255),
-                TextInput::make('amount')
-                    ->label('Amount')
+                Select::make('user_id')
+                    ->label('Member')
+                    ->relationship('user', 'name')
+                    ->searchable()
+                    ->preload()
+                    ->editOptionForm(User::getForm())
+                    ->createOptionForm(User::getForm())
+                    ->required(),
+                Select::make('account_id')
+                    ->label('Account')
+                    ->relationship('account', 'name')
+                    ->searchable()
+                    ->preload()
+                    ->required(),
+                TextInput::make('income_amount')
+                    ->label('Income Amount')
                     ->required()
                     ->numeric()
                     ->minValue('1')
                     ->hintIcon('heroicon-o-currency-dollar')
                     ->prefix('Kes'),
-                TextInput::make('description')
-                    ->maxLength(255)
-                    ->default(null),
-                DateTimePicker::make('date')
-                    ->required(),
-            ]),
+            ])->columns(3),
         ];
     }
 }

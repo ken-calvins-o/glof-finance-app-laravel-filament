@@ -18,8 +18,7 @@ class ListSavings extends ListRecords
     protected function getHeaderWidgets(): array
     {
         return [
-            WealthSummaryWidget::class,
-            WealthSummaryChartWidget::class,
+
         ];
     }
 
