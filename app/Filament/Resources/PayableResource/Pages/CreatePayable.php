@@ -129,12 +129,12 @@ class CreatePayable extends CreateRecord
                 'year_id' => $data['year_id'],
             ]);
 
-            // Step 5: Adjust the user’s Savings using the full debt amount (inclusive of interest)
-            $this->adjustSavings($user, $debtAmount);
+            // Step 5: Adjust the user’s Savings using the total amount + debt amount
+            $this->adjustSavings($user, $totalAmount, $debtAmount);
         });
     }
 
-    protected function adjustSavings(User $user, float $debtAmount): void
+    protected function adjustSavings(User $user, float $totalAmount, float $debtAmount): void
     {
         $latestSaving = Saving::where('user_id', $user->id)
             ->latest('created_at')
@@ -144,15 +144,19 @@ class CreatePayable extends CreateRecord
             throw new ModelNotFoundException("Savings record not found for user ID: {$user->id}");
         }
 
-        $newNetWorth = $latestSaving->net_worth - $debtAmount;
+        // Calculate total deduction: totalAmount + debtAmount
+        $totalDeduction = $totalAmount + $debtAmount;
+
+        // Deduct the total from the user's net worth
+        $newNetWorth = $latestSaving->net_worth - $totalDeduction;
 
         // Record the new Savings adjustment
         Saving::create([
             'user_id' => $user->id,
             'credit_amount' => 0,
-            'debit_amount' => $debtAmount, // Use the debt amount inclusive of interest
+            'debit_amount' => $totalDeduction, // Log the total deduction
             'balance' => $latestSaving->balance,
-            'net_worth' => $newNetWorth, // Deduct the debt amount from net worth
+            'net_worth' => $newNetWorth, // Apply the total deduction to net worth
         ]);
     }
 }
