@@ -55,60 +55,37 @@ class CreatePayable extends CreateRecord
             // Step 1: Fetch the cumulative amount in AccountCollection
             $existingAmount = AccountCollection::where('account_id', $data['account_id'])
                 ->where('user_id', $user->id)
-                ->first()?->amount;
+                ->first()?->amount ?? 0;
 
             // Determine shortfall and interest
-            if ($existingAmount < 0) {
-                $shortfall = $totalAmount;
+            $shortfall = max(0, $totalAmount - $existingAmount); // Calculate the shortfall from totalAmount minus available balance
+            $interest = $shortfall * 0.01; // 1% interest
+
+            // Deductable debt_amount (shortfall + interest)
+            $totalDebtAmountToDeduct = $shortfall + $interest;
+
+            // Handle Debt creation/updating
+            $debt = Debt::firstOrNew([
+                'account_id' => $data['account_id'],
+                'user_id' => $user->id,
+            ]);
+
+            Income::create([
+                'account_id' => $data['account_id'],
+                'user_id' => $user->id,
+                'interest_amount' => $interest,
+            ]);
+
+            if ($debt->exists) {
+                $debt->outstanding_balance += $totalDebtAmountToDeduct; // Add new debt
             } else {
-                $shortfall = $totalAmount - $existingAmount; // The deficit
+                $debt->outstanding_balance = $totalDebtAmountToDeduct; // Set initial debt
             }
+            $debt->save();
 
-            $debtAmount = $totalAmount; // Initialize as the total amount
-
-            if ($shortfall > 0) {
-                $interest = $shortfall * 0.01; // 1% interest
-                $debtAmount = $shortfall + $interest; // Debt amount to be applied
-
-                // Handle Debt creation/updating
-                $debt = Debt::firstOrNew([
-                    'account_id' => $data['account_id'],
-                    'user_id' => $user->id,
-                ]);
-
-                Income::create([
-                    'account_id' => $data['account_id'],
-                    'user_id' => $user->id,
-                    'interest_amount' => $interest,
-                ]);
-
-                if ($debt->exists) {
-                    $debt->outstanding_balance += $debtAmount; // Add the new amount to existing debt
-                } else {
-                    $debt->outstanding_balance = $debtAmount;
-                }
-                $debt->save();
-
-                // Update AccountCollection pivot table
-                $newAmount = $existingAmount - $debtAmount; // Deduct the debt amount
-                DB::table('account_collections')->updateOrInsert(
-                    [
-                        'account_id' => $data['account_id'],
-                        'user_id' => $user->id,
-                    ],
-                    [
-                        'amount' => $newAmount, // Save the adjusted value
-                    ]
-                );
-
-                // Update AccountCollection model for accurate persistence
-                $accountCollection = AccountCollection::firstOrNew([
-                    'account_id' => $data['account_id'],
-                    'user_id' => $user->id,
-                ]);
-                $accountCollection->amount = $newAmount; // Deduct total debt amount
-                $accountCollection->save();
-            }
+            // Adjust `AccountCollection` with the correct deduction
+            $newAmount = $existingAmount - $totalDebtAmountToDeduct;
+            $this->adjustAccountCollection($data['account_id'], $user->id, $newAmount);
 
             // Step 3: Record the Payable
             $payable = Payable::create([
@@ -130,11 +107,11 @@ class CreatePayable extends CreateRecord
             ]);
 
             // Step 5: Adjust the user’s Savings using the total amount + debt amount
-            $this->adjustSavings($user, $totalAmount, $debtAmount);
+            $this->adjustSavings($user, $totalAmount, $totalDebtAmountToDeduct);
         });
     }
 
-    protected function adjustSavings(User $user, float $totalAmount, float $debtAmount): void
+    protected function adjustSavings(User $user, float $totalAmount, float $totalDebtAmountToDeduct): void
     {
         $latestSaving = Saving::where('user_id', $user->id)
             ->latest('created_at')
@@ -144,19 +121,39 @@ class CreatePayable extends CreateRecord
             throw new ModelNotFoundException("Savings record not found for user ID: {$user->id}");
         }
 
-        // Calculate total deduction: totalAmount + debtAmount
-        $totalDeduction = $totalAmount + $debtAmount;
-
-        // Deduct the total from the user's net worth
+        // Deduct totalDebtAmountToDeduct from user's net worth
+        $totalDeduction = $totalDebtAmountToDeduct; // Corrected to only consider the debt deduction
         $newNetWorth = $latestSaving->net_worth - $totalDeduction;
 
         // Record the new Savings adjustment
         Saving::create([
             'user_id' => $user->id,
             'credit_amount' => 0,
-            'debit_amount' => $totalDeduction, // Log the total deduction
+            'debit_amount' => $totalDeduction, // Log the total deduction (10100)
             'balance' => $latestSaving->balance,
-            'net_worth' => $newNetWorth, // Apply the total deduction to net worth
+            'net_worth' => $newNetWorth, // Apply the debt deduction to net worth
         ]);
+    }
+
+    protected function adjustAccountCollection(int $accountId, int $userId, float $adjustedAmount): void
+    {
+        // Update AccountCollection pivot table
+        DB::table('account_collections')->updateOrInsert(
+            [
+                'account_id' => $accountId,
+                'user_id' => $userId,
+            ],
+            [
+                'amount' => $adjustedAmount, // Save the adjusted value
+            ]
+        );
+
+        // Update AccountCollection model for accurate persistence
+        $accountCollection = AccountCollection::firstOrNew([
+            'account_id' => $accountId,
+            'user_id' => $userId,
+        ]);
+        $accountCollection->amount = $adjustedAmount; // Deduct total debt amount
+        $accountCollection->save();
     }
 }
