@@ -3,18 +3,15 @@
 namespace App\Filament\Resources\PayableResource\Pages;
 
 use App\Filament\Resources\PayableResource;
-use App\Models\AccountCollection;
-use App\Models\Debt;
-use App\Models\Income;
-use App\Models\MonthlyPayable;
 use App\Models\Payable;
+use App\Models\MonthlyPayable;
 use App\Models\PayableYear;
-use App\Models\Saving;
+use App\Models\Debt;
 use App\Models\User;
+use App\Enums\DebtStatusEnum;
 use Filament\Resources\Pages\CreateRecord;
+use Illuminate\Support\Collection;
 use Illuminate\Database\Eloquent\Model;
-use Illuminate\Database\Eloquent\ModelNotFoundException;
-use Illuminate\Support\Facades\DB;
 
 class CreatePayable extends CreateRecord
 {
@@ -22,138 +19,172 @@ class CreatePayable extends CreateRecord
 
     protected function handleRecordCreation(array $data): Model
     {
-        return DB::transaction(function () use ($data) {
-            if ($data['is_general']) {
-                $excludedUserIds = $data['user_id'] ?? [];
+        $users = $this->determineUsers($data);
 
-                // Fetch all users excluding those in the excluded list
-                $users = User::whereNotIn('id', $excludedUserIds)->get();
+        // Optimize by bulk inserting Payable records
+        $payables = $this->batchCreatePayables($data, $users);
 
-                foreach ($users as $user) {
-                    $this->createPayableAndRelatedRecords($data, $user, true);
-                }
+        // Get all created payable IDs
+        $payableIds = $payables->pluck('id');
 
-                return new Payable(); // Return a dummy instantiation if no specific Payable is needed
-            }
+        // Create MonthlyPayable and PayableYear records in bulk
+        $this->batchCreateMonthlyPayables($payableIds, $data['month_id']);
+        $this->batchCreatePayableYears($payableIds, $data['year_id']);
 
-            // Custom payments: Iterate over repeater data
-            foreach ($data['users'] as $userData) {
-                $user = User::findOrFail($userData['user_id']);
-                $customData = array_merge($data, $userData); // Merge parent data with user data
-                $this->createPayableAndRelatedRecords($customData, $user, false);
-            }
+        // Handle debts for users
+        $this->handleDebts($data, $users, $payables);
 
-            return new Payable(); // Return a dummy instantiation
-        });
+        // Return the last created payable (arbitrary)
+        return $payables->last();
     }
 
-    protected function createPayableAndRelatedRecords(array $data, User $user, bool $isGeneral): void
+    /**
+     * Determine the list of users based on the `is_general` flag.
+     *
+     * @param array $data
+     * @return Collection
+     */
+    protected function determineUsers(array $data): Collection
     {
-        DB::transaction(function () use ($data, $user, $isGeneral) {
-            $totalAmount = $data['total_amount'];
-
-            // Step 1: Fetch the cumulative amount in AccountCollection
-            $existingAmount = AccountCollection::where('account_id', $data['account_id'])
-                ->where('user_id', $user->id)
-                ->first()?->amount ?? 0;
-
-            // Determine shortfall and interest
-            $shortfall = max(0, $totalAmount - $existingAmount); // Calculate the shortfall from totalAmount minus available balance
-            $interest = $shortfall * 0.01; // 1% interest
-
-            // Deductable debt_amount (shortfall + interest)
-            $totalDebtAmountToDeduct = $shortfall + $interest;
-
-            // Handle Debt creation/updating
-            $debt = Debt::firstOrNew([
-                'account_id' => $data['account_id'],
-                'user_id' => $user->id,
-            ]);
-
-            Income::create([
-                'account_id' => $data['account_id'],
-                'user_id' => $user->id,
-                'interest_amount' => $interest,
-            ]);
-
-            if ($debt->exists) {
-                $debt->outstanding_balance += $totalDebtAmountToDeduct; // Add new debt
-            } else {
-                $debt->outstanding_balance = $totalDebtAmountToDeduct; // Set initial debt
-            }
-            $debt->save();
-
-            // Adjust `AccountCollection` with the correct deduction
-            $newAmount = $existingAmount - $totalDebtAmountToDeduct;
-            $this->adjustAccountCollection($data['account_id'], $user->id, $newAmount);
-
-            // Step 3: Record the Payable
-            $payable = Payable::create([
-                'account_id' => $data['account_id'],
-                'user_id' => $user->id,
-                'total_amount' => $totalAmount,
-                'from_savings' => $data['from_savings'],
-                'is_general' => $isGeneral,
-            ]);
-
-            // Step 4: Link MonthlyPayable and PayableYear models
-            MonthlyPayable::create([
-                'payable_id' => $payable->id,
-                'month_id' => $data['month_id'],
-            ]);
-            PayableYear::create([
-                'payable_id' => $payable->id,
-                'year_id' => $data['year_id'],
-            ]);
-
-            // Step 5: Adjust the user’s Savings using the total amount + debt amount
-            $this->adjustSavings($user, $totalAmount, $totalDebtAmountToDeduct);
-        });
-    }
-
-    protected function adjustSavings(User $user, float $totalAmount, float $totalDebtAmountToDeduct): void
-    {
-        $latestSaving = Saving::where('user_id', $user->id)
-            ->latest('created_at')
-            ->first();
-
-        if (!$latestSaving) {
-            throw new ModelNotFoundException("Savings record not found for user ID: {$user->id}");
+        if ($data['is_general']) {
+            return $this->getGeneralUsers($data['user_id'] ?? []);
         }
 
-        // Deduct totalDebtAmountToDeduct from user's net worth
-        $totalDeduction = $totalDebtAmountToDeduct; // Corrected to only consider the debt deduction
-        $newNetWorth = $latestSaving->net_worth - $totalDeduction;
-
-        // Record the new Savings adjustment
-        Saving::create([
-            'user_id' => $user->id,
-            'credit_amount' => 0,
-            'debit_amount' => $totalDeduction, // Log the total deduction (10100)
-            'balance' => $latestSaving->balance,
-            'net_worth' => $newNetWorth, // Apply the debt deduction to net worth
-        ]);
+        return $this->getCustomUsers($data['users']);
     }
 
-    protected function adjustAccountCollection(int $accountId, int $userId, float $adjustedAmount): void
+    /**
+     * Get users for a general payment by excluding specific user IDs.
+     *
+     * @param array $excludedUserIds
+     * @return Collection
+     */
+    protected function getGeneralUsers(array $excludedUserIds): Collection
     {
-        // Update AccountCollection pivot table
-        DB::table('account_collections')->updateOrInsert(
-            [
-                'account_id' => $accountId,
-                'user_id' => $userId,
-            ],
-            [
-                'amount' => $adjustedAmount, // Save the adjusted value
-            ]
-        );
+        return User::whereNotIn('id', $excludedUserIds)->select(['id'])->get(); // Fetch only `id`s
+    }
 
-        // Update AccountCollection model for accurate persistence
-        $accountCollection = AccountCollection::firstOrNew([
-            'account_id' => $accountId,
-            'user_id' => $userId,
-        ]);
-        $accountCollection->amount = $adjustedAmount; // Deduct total debt amount
-        $accountCollection->save();
+    /**
+     * Get users for a custom payment from the repeater data.
+     *
+     * @param array $customUsers
+     * @return Collection
+     */
+    protected function getCustomUsers(array $customUsers): Collection
+    {
+        return collect($customUsers);
+    }
+
+    /**
+     * Batch create Payable records for users.
+     *
+     * @param array $data
+     * @param Collection $users
+     * @return Collection
+     */
+    protected function batchCreatePayables(array $data, Collection $users): Collection
+    {
+        $isGeneral = $data['is_general'];
+        $payables = [];
+
+        foreach ($users as $user) {
+            $payables[] = [
+                'account_id' => $data['account_id'],
+                'user_id' => $isGeneral ? $user->id : $user['user_id'],
+                'total_amount' => $isGeneral ? $data['total_amount'] : $user['total_amount'],
+                'is_general' => $isGeneral,
+                'from_savings' => $isGeneral ? $data['from_savings'] : $user['from_savings'],
+                'created_at' => now(),
+                'updated_at' => now(),
+            ];
+        }
+
+        // Perform a single insert query for payables
+        Payable::insert($payables);
+
+        // Retrieve recently created payables
+        return Payable::whereIn('user_id', $users->pluck('id'))->where('account_id', $data['account_id'])->get();
+    }
+
+    /**
+     * Batch create MonthlyPayable records.
+     *
+     * @param Collection $payableIds
+     * @param int $monthId
+     * @return void
+     */
+    protected function batchCreateMonthlyPayables(Collection $payableIds, int $monthId): void
+    {
+        $monthlyPayables = $payableIds->map(function ($payableId) use ($monthId) {
+            return [
+                'payable_id' => $payableId,
+                'month_id' => $monthId,
+                'created_at' => now(),
+                'updated_at' => now(),
+            ];
+        })->all();
+
+        // Perform a single insert query
+        MonthlyPayable::insert($monthlyPayables);
+    }
+
+    /**
+     * Batch create PayableYear records.
+     *
+     * @param Collection $payableIds
+     * @param int $yearId
+     * @return void
+     */
+    protected function batchCreatePayableYears(Collection $payableIds, int $yearId): void
+    {
+        $payableYears = $payableIds->map(function ($payableId) use ($yearId) {
+            return [
+                'payable_id' => $payableId,
+                'year_id' => $yearId,
+                'created_at' => now(),
+                'updated_at' => now(),
+            ];
+        })->all();
+
+        // Perform a single insert query
+        PayableYear::insert($payableYears);
+    }
+
+    /**
+     * Handle debts for users where total_amount is less than the account collection amount.
+     *
+     * @param array $data
+     * @param Collection $users
+     * @param Collection $payables
+     * @return void
+     */
+    protected function handleDebts(array $data, Collection $users, Collection $payables): void
+    {
+        foreach ($users as $user) {
+            $userId = $user->id;
+            $accountId = $data['account_id'];
+
+            // Retrieve the total_amount from corresponding payable
+            $totalAmount = $payables->where('user_id', $userId)->first()->total_amount;
+
+            // Fetch the `amount` from the AccountCollection pivot table
+            $accountAmount = $user->accounts()->find($accountId)->pivot->amount ?? 0;
+
+            // Check if total_amount is greater than the accountAmount
+            if ($totalAmount > $accountAmount) {
+                $excess = $totalAmount - $accountAmount;
+                $interest = $excess * 0.01; // Calculate 1% interest
+                $outstandingBalance = $excess + $interest;
+
+                // Create or update the Debt record
+                Debt::updateOrCreate(
+                    ['account_id' => $accountId, 'user_id' => $userId],
+                    [
+                        'outstanding_balance' => $outstandingBalance,
+                        'debt_status' => DebtStatusEnum::Pending,
+                    ]
+                );
+            }
+        }
     }
 }
