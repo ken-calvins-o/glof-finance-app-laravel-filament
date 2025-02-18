@@ -63,17 +63,21 @@ class CreatePayable extends CreateRecord
 
         foreach ($users as $user) {
             $userId = $isGeneral ? $user->id : $user['user_id'];
+            $fromSavings = $isGeneral ? $data['from_savings'] : ($user['from_savings'] ?? false);
+            $totalAmount = $isGeneral ? $data['total_amount'] : ($user['total_amount'] ?? 0);
 
+            // If using savings, deduct balance from user's savings
+            if ($fromSavings) {
+                $this->deductFromSavings($userId, $totalAmount);
+            }
+
+            // Create the Payable record
             $payable = Payable::create([
                 'account_id' => $data['account_id'],
                 'user_id' => $userId,
-                'total_amount' => $isGeneral
-                    ? $data['total_amount']
-                    : ($user['total_amount'] ?? 0), // Ensure total_amount is properly handled
+                'total_amount' => $totalAmount, // Ensure total_amount is properly handled
                 'is_general' => $isGeneral,
-                'from_savings' => $isGeneral
-                    ? $data['from_savings']
-                    : ($user['from_savings'] ?? 0), // Ensure from_savings has a default
+                'from_savings' => $fromSavings, // Reflect from_savings choice
             ]);
 
             $payables->push($payable);
@@ -143,6 +147,27 @@ class CreatePayable extends CreateRecord
             $accountCollection->amount = $currentAmount - $deduction;
             $accountCollection->save();
         }
+    }
+
+    protected function deductFromSavings(int $userId, float $amount): void
+    {
+        // Retrieve the latest Saving record
+        $latestSaving = Saving::where('user_id', $userId)->latest('id')->first();
+        $currentBalance = $latestSaving ? $latestSaving->balance : 0;
+
+        // Ensure there is enough balance to deduct
+        if ($currentBalance < $amount) {
+            throw new \Exception("Member does not have sufficient savings to cover the amount.");
+        }
+
+        // Create a new Saving record to reflect the deduction
+        Saving::create([
+            'user_id' => $userId,
+            'credit_amount' => 0, // No credit for deduction
+            'debit_amount' => $amount, // Amount deducted
+            'balance' => $currentBalance - $amount, // Update balance
+            'net_worth' => $latestSaving ? $latestSaving->net_worth - $amount : 0,
+        ]);
     }
 
     /**

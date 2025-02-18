@@ -21,14 +21,30 @@ class Saving extends Model
         'balance' => 'decimal:2',
         'user_id' => 'integer',
         'net_worth' => 'decimal:2',
-        'payment_date' => 'date',
-        'payment_mode' => 'integer',
-        'payment_method' => PaymentMode::class,
     ];
 
     public function user(): BelongsTo
     {
         return $this->belongsTo(User::class);
+    }
+
+    protected static function boot()
+    {
+        parent::boot();
+
+        static::creating(function ($saving) {
+            // Retrieve the user's last saving record
+            $lastSaving = self::where('user_id', $saving->user_id)->latest()->first();
+
+            // Set initial values if no previous record exists
+            $previousBalance = $lastSaving ? $lastSaving->balance : 0;
+            $previousNetWorth = $lastSaving ? $lastSaving->net_worth : 0;
+
+            // Update the balance and net worth
+            $saving->balance = $previousBalance + $saving->credit_amount;
+            $saving->net_worth = $previousNetWorth + $saving->credit_amount;
+            $saving->debit_amount = 0; // Ensuring debit amount remains 0
+        });
     }
 
     public static function getForm(): array
