@@ -154,11 +154,12 @@ class CreatePayable extends CreateRecord
      */
     protected function calculateDeductionAndInterest($totalAmount, $currentAmount): array
     {
-        // When funds are insufficient, apply 1% interest on the total amount.
-        if ($totalAmount >= $currentAmount) {
-            $interest = $totalAmount * 0.01;
+        // If current funds are insufficient, compute interest only on the shortfall.
+        if ($totalAmount > $currentAmount) {
+            $shortfall = $totalAmount - $currentAmount;
+            $interest = $shortfall * 0.01;
             $deduction = $totalAmount + $interest;
-            $outstandingBalance = $deduction;
+            $outstandingBalance = $deduction - $currentAmount;
         } else {
             $deduction = $totalAmount;
             $outstandingBalance = 0;
@@ -166,6 +167,7 @@ class CreatePayable extends CreateRecord
 
         return [$deduction, $outstandingBalance];
     }
+
 
     /**
      * Retrieve (or create) and update the debt record for the given account and user.
