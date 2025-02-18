@@ -63,21 +63,17 @@ class CreatePayable extends CreateRecord
 
         foreach ($users as $user) {
             $userId = $isGeneral ? $user->id : $user['user_id'];
-            $fromSavings = $isGeneral ? $data['from_savings'] : ($user['from_savings'] ?? false);
-            $totalAmount = $isGeneral ? $data['total_amount'] : ($user['total_amount'] ?? 0);
 
-            // If using savings, deduct balance from user's savings
-            if ($fromSavings) {
-                $this->deductFromSavings($userId, $totalAmount);
-            }
-
-            // Create the Payable record
             $payable = Payable::create([
                 'account_id' => $data['account_id'],
                 'user_id' => $userId,
-                'total_amount' => $totalAmount, // Ensure total_amount is properly handled
+                'total_amount' => $isGeneral
+                    ? $data['total_amount']
+                    : ($user['total_amount'] ?? 0), // Ensure total_amount is properly handled
                 'is_general' => $isGeneral,
-                'from_savings' => $fromSavings, // Reflect from_savings choice
+                'from_savings' => $isGeneral
+                    ? $data['from_savings']
+                    : ($user['from_savings'] ?? 0), // Ensure from_savings has a default
             ]);
 
             $payables->push($payable);
@@ -111,67 +107,64 @@ class CreatePayable extends CreateRecord
         $isGeneral = $data['is_general'];
 
         foreach ($users as $user) {
-            // Conditional access: Check if user is an array (from repeater, custom users)
             $userId = $isGeneral ? $user->id : $user['user_id'];
             $accountId = $data['account_id'];
 
-            // Retrieve the corresponding payable for the user
             $payable = $payables->firstWhere('user_id', $userId);
             if (!$payable) {
-                continue; // Skip if no corresponding payable is found
+                continue;
             }
 
             $totalAmount = $payable->total_amount;
+            $fromSavings = $payable->from_savings;
 
-            // Retrieve (or create) the pivot record from the account_collections table.
-            $accountCollection = AccountCollection::firstOrNew([
-                'user_id' => $userId,
-                'account_id' => $accountId,
-            ]);
+            if ($fromSavings) {
+                $this->handleSavingsDeduction($userId, $totalAmount);
+            } else {
+                // Adjusted Logic for from_savings = false
+                $accountCollection = AccountCollection::firstOrNew([
+                    'user_id' => $userId,
+                    'account_id' => $accountId,
+                ]);
 
-            // Default the current amount to 0 if not already set.
-            $currentAmount = $accountCollection->amount ?? 0;
+                // Reset currentAmount for calculation if it's already negative
+                $currentAmount = max(0, $accountCollection->amount ?? 0);
 
-            // Calculate the deduction and determine if a debt record is needed.
-            [$deduction, $outstandingBalance] = $this->calculateDeductionAndInterest($totalAmount, $currentAmount);
+                // Correct calculation factoring in reset currentAmount
+                [$deduction, $outstandingBalance] = $this->calculateDeductionAndInterest($totalAmount, $currentAmount);
 
-            // If there is an outstanding balance, update the Debt record using firstOrNew.
-            if ($outstandingBalance > 0) {
-                $this->updateDebtRecord($accountId, $userId, $outstandingBalance);
+                if ($outstandingBalance > 0) {
+                    $this->updateDebtRecord($accountId, $userId, $outstandingBalance);
+                }
+
+                // Subtract deduction from actual AccountCollection amount (not reset amount)
+                $accountCollection->amount -= $deduction;
+                $accountCollection->save();
+
+                $this->updateSavings($userId, $deduction); // Record savings update
             }
-
-            // ** New Logic: Update Savings **
-            $this->updateSavings($userId, $deduction, $outstandingBalance);
-
-            // Update the account collection's amount.
-            $accountCollection->amount = $currentAmount - $deduction;
-            $accountCollection->save();
         }
     }
 
-    protected function deductFromSavings(int $userId, float $amount): void
+    protected function handleSavingsDeduction(int $userId, float $totalAmount): void
     {
-        // Retrieve the latest Saving record
         $latestSaving = Saving::where('user_id', $userId)->latest('id')->first();
         $currentBalance = $latestSaving ? $latestSaving->balance : 0;
+        $currentNetWorth = $latestSaving ? $latestSaving->net_worth : 0;
 
-        // Ensure there is enough balance to deduct
-        if ($currentBalance < $amount) {
-            throw new \Exception("Member does not have sufficient savings to cover the amount.");
-        }
-
-        // Create a new Saving record to reflect the deduction
         Saving::create([
             'user_id' => $userId,
-            'credit_amount' => 0, // No credit for deduction
-            'debit_amount' => $amount, // Amount deducted
-            'balance' => $currentBalance - $amount, // Update balance
-            'net_worth' => $latestSaving ? $latestSaving->net_worth - $amount : 0,
+            'credit_amount' => 0,
+            'debit_amount' => $totalAmount,
+            'balance' => $currentBalance - $totalAmount, // Deduct from balance
+            'net_worth' => $currentNetWorth, // Net worth remains the SAME
         ]);
     }
 
     /**
-     * Calculate the deduction and the outstanding balance (if any) based on totalAmount and currentAmount.
+     * Calculate the deduction and the outstanding balance based on totalAmount and currentAmount.
+     *
+     * Adjusted with logic to reset currentAmount to 0 if it's negative.
      *
      * @param float|int $totalAmount
      * @param float|int $currentAmount
@@ -179,12 +172,14 @@ class CreatePayable extends CreateRecord
      */
     protected function calculateDeductionAndInterest($totalAmount, $currentAmount): array
     {
-        // If current funds are insufficient, compute interest only on the shortfall.
-        if ($totalAmount > $currentAmount) {
-            $shortfall = $totalAmount - $currentAmount;
+        // Reset the currentAmount to 0 if it is negative
+        $resetCurrentAmount = max(0, $currentAmount);
+
+        if ($totalAmount > $resetCurrentAmount) {
+            $shortfall = $totalAmount - $resetCurrentAmount;
             $interest = $shortfall * 0.01;
             $deduction = $totalAmount + $interest;
-            $outstandingBalance = $deduction - $currentAmount;
+            $outstandingBalance = $deduction - $resetCurrentAmount;
         } else {
             $deduction = $totalAmount;
             $outstandingBalance = 0;
@@ -197,6 +192,8 @@ class CreatePayable extends CreateRecord
     /**
      * Retrieve (or create) and update the debt record for the given account and user.
      *
+     * Adds the outstanding balance incrementally to any existing outstanding balance.
+     *
      * @param int $accountId
      * @param int $userId
      * @param float|int $outstandingBalance
@@ -204,16 +201,12 @@ class CreatePayable extends CreateRecord
      */
     protected function updateDebtRecord($accountId, $userId, $outstandingBalance): void
     {
-        // Retrieve the Debt model, or create a new one if it doesn't exist.
         $debt = Debt::firstOrNew([
             'account_id' => $accountId,
             'user_id'    => $userId,
         ]);
 
-        // Add the new outstanding balance to the existing one (if any).
         $debt->outstanding_balance += $outstandingBalance;
-
-        // Ensure the debt status remains pending.
         $debt->debt_status = DebtStatusEnum::Pending;
         $debt->save();
     }
@@ -226,22 +219,20 @@ class CreatePayable extends CreateRecord
      *
      * @param int $userId
      * @param float|int $deduction
-     * @param float|int $outstandingBalance
      * @return void
      */
-    protected function updateSavings(int $userId, $deduction, $outstandingBalance): void
+    protected function updateSavings(int $userId, $deduction): void
     {
-        // Retrieve the latest Saving record for the user to fetch the current balance
         $latestSaving = Saving::where('user_id', $userId)->latest('id')->first();
-        $currentBalance = $latestSaving ? $latestSaving->balance : 0; // Default to 0 if no record exists
+        $currentBalance = $latestSaving ? $latestSaving->balance : 0;
+        $currentNetWorth = $latestSaving ? $latestSaving->net_worth : 0;
 
-        // Create a new Saving record for this operation
         Saving::create([
             'user_id' => $userId,
-            'credit_amount' => 0, // Set to 0
-            'debit_amount' => $deduction, // Total of total_amount + outstanding_balance
-            'balance' => $currentBalance, // Keep the balance the same
-            'net_worth' => $latestSaving ? $latestSaving->net_worth - $deduction : 0,
+            'credit_amount' => 0,
+            'debit_amount' => $deduction,
+            'balance' => $currentBalance, // Balance remains unchanged for from_savings = false
+            'net_worth' => $currentNetWorth - $deduction, // Deduct net worth for from_savings = false
         ]);
     }
 

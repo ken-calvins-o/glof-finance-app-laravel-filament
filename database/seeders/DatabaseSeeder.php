@@ -2,12 +2,12 @@
 
 namespace Database\Seeders;
 
-use App\Enums\PaymentMode;
 use App\Enums\RoleEnum;
+use App\Models\Income;
 use App\Models\Saving;
 use App\Models\User;
 use Illuminate\Database\Seeder;
-use Illuminate\Support\Facades\App;
+use Illuminate\Support\Facades\Hash;
 
 class DatabaseSeeder extends Seeder
 {
@@ -16,7 +16,7 @@ class DatabaseSeeder extends Seeder
      */
     public function run(): void
     {
-        $defaultPassword = bcrypt('password');
+        $defaultPassword = Hash::make('password');
 
         // Seed users and savings
         $users = [
@@ -54,21 +54,24 @@ class DatabaseSeeder extends Seeder
             [ 'name' => 'Ambrose Anguka', 'registration_fee' => 20000, 'password' => null, 'role' => RoleEnum::Member ],
         ];
 
+        // Create each user and the corresponding saving record
         foreach ($users as $userData) {
-            $user = User::factory()->create($userData);
+            $user = User::create($userData);
 
-            // Generate a fixed amount and use it for both amount and net_worth
-            $fixedAmount = 1000;
-
+            // Create a saving record using the registration fee as credit_amount
             Saving::create([
-                'user_id' => $user->id,
-                'credit_amount' => $fixedAmount,
-                'balance' => 0.00,
-                'net_worth' => 0.00,
-                'payment_method' => PaymentMode::Mobile_Money,
+                'user_id'       => $user->id,
+                'credit_amount' => $userData['registration_fee'],
+                'debit_amount'  => 0,
+                'net_worth'     => 0,
+            ]);
+
+            Income::create([
+                'user_id' => $user->id, // Associate the Income record with the created User
+                'origin' => 'Registration Fee', // Mark the origin as Registration Fee
+                'income_amount' => $userData['registration_fee'], // Set the income amount to registration_fee
             ]);
         }
-
         $this->call([
             AccountSeeder::class,
             MonthSeeder::class,

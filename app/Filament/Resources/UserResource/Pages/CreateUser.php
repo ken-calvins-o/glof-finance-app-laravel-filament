@@ -4,6 +4,7 @@ namespace App\Filament\Resources\UserResource\Pages;
 
 use App\Filament\Resources\UserResource;
 use App\Models\Income;
+use App\Models\Saving;
 use Illuminate\Support\Facades\DB;
 use Filament\Resources\Pages\CreateRecord;
 
@@ -31,6 +32,12 @@ class CreateUser extends CreateRecord
                     'user_id' => $user->id, // Associate the Income record with the created User
                     'origin' => 'Registration Fee', // Mark the origin as Registration Fee
                     'income_amount' => $data['registration_fee'], // Set the income amount to registration_fee
+                ]);
+
+                Saving::create([
+                    'user_id' => $user->id,
+                    'credit_amount' => $data['registration_fee'],
+                    'debit_amount' => 0,
                 ]);
             }
 

@@ -22,8 +22,8 @@ class SavingFactory extends Factory
     public function definition(): array
     {
         return [
-            'amount' => $this->faker->randomFloat(2, 0, 99999999.99),
-            'user_id' => User::factory(),
+//            'amount' => $this->faker->randomFloat(2, 0, 99999999.99),
+//            'user_id' => User::factory(),
         ];
     }
 }
