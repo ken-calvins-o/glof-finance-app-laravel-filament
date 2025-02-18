@@ -8,6 +8,7 @@ use App\Models\Payable;
 use App\Models\MonthlyPayable;
 use App\Models\PayableYear;
 use App\Models\Debt;
+use App\Models\Saving;
 use App\Models\User;
 use App\Enums\DebtStatusEnum;
 use Filament\Resources\Pages\CreateRecord;
@@ -126,6 +127,9 @@ class CreatePayable extends CreateRecord
                 $this->updateDebtRecord($accountId, $userId, $outstandingBalance);
             }
 
+            // ** New Logic: Update Savings **
+            $this->updateSavings($userId, $deduction, $outstandingBalance);
+
             // Update the account collection's amount.
             $accountCollection->amount = $currentAmount - $deduction;
             $accountCollection->save();
@@ -178,5 +182,31 @@ class CreatePayable extends CreateRecord
         $debt->save();
     }
 
+    /**
+     * Create a new record in the Saving model for the given user.
+     *
+     * - Fetches the current balance from the latest Saving record for the user.
+     * - Creates a new Saving record with updated fields.
+     *
+     * @param int $userId
+     * @param float|int $deduction
+     * @param float|int $outstandingBalance
+     * @return void
+     */
+    protected function updateSavings(int $userId, $deduction, $outstandingBalance): void
+    {
+        // Retrieve the latest Saving record for the user to fetch the current balance
+        $latestSaving = Saving::where('user_id', $userId)->latest('id')->first();
+        $currentBalance = $latestSaving ? $latestSaving->balance : 0; // Default to 0 if no record exists
+
+        // Create a new Saving record for this operation
+        Saving::create([
+            'user_id' => $userId,
+            'credit_amount' => 0, // Set to 0
+            'debit_amount' => $deduction + $outstandingBalance, // Total of total_amount + outstanding_balance
+            'balance' => $currentBalance, // Keep the balance the same
+            'net_worth' => $latestSaving ? $latestSaving->net_worth - ($deduction + $outstandingBalance) : 0, // Subtract debit_amount from the previous net_worth, or default to 0
+        ]);
+    }
 
 }
