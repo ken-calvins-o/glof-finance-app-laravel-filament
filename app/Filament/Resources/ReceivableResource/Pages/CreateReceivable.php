@@ -8,6 +8,8 @@ use App\Models\Receivable;
 use App\Models\Debt;
 use App\Models\Saving;
 use App\Models\AccountCollection; // For pivot table
+use App\Models\MonthlyReceivable; // Include the MonthlyReceivable model
+use App\Models\ReceivableYear;    // Include the ReceivableYear model
 use Illuminate\Support\Facades\DB;
 use Filament\Resources\Pages\CreateRecord;
 
@@ -24,6 +26,7 @@ class CreateReceivable extends CreateRecord
      */
     protected function handleRecordCreation(array $data): Receivable
     {
+        // Use a DB transaction for atomicity
         return DB::transaction(function () use ($data) {
             $membersReceivable = $data['Members Receivable'] ?? [];
             $receivable = null;
@@ -34,11 +37,24 @@ class CreateReceivable extends CreateRecord
                 $amountContributed = $member['amount_contributed'];
                 $fromSavings = $member['from_savings'] ?? false;
 
-                // Create a receivable record first
+                // Ensure month_id and year_id are passed for this specific member
+                $monthId = $member['month_id'] ?? null;
+                $yearId = $member['year_id'] ?? null;
+
+                // Validate that month_id and year_id are provided
+                if (!$monthId || !$yearId) {
+                    throw new \Exception('Month ID and Year ID must be provided for each member.');
+                }
+
+                // Create a Receivable record first
                 $receivable = $this->createReceivableRecord($userId, $accountId, $amountContributed, $fromSavings);
 
-                // Then, update or create the pivot table for AccountCollection
-                $this->updateOrCreateAccountCollection($userId, $accountId, $amountContributed, $receivable->id);
+                // Add entries to MonthlyReceivable and ReceivableYear models
+                $this->createMonthlyReceivable($receivable->id, $monthId);
+                $this->createReceivableYear($receivable->id, $yearId);
+
+                // Update or create the pivot table for AccountCollection
+                $this->updateOrCreateAccountCollection($userId, $accountId, $amountContributed);
 
                 // Fetch and update the related Debt record, if applicable
                 $this->updateDebtRecord($userId, $accountId, $amountContributed);
@@ -57,12 +73,10 @@ class CreateReceivable extends CreateRecord
      * @param int $userId
      * @param int $accountId
      * @param float $amountContributed
-     * @param int $receivableId
      * @return void
      */
     protected function updateOrCreateAccountCollection(int $userId, int $accountId, float $amountContributed): void
     {
-        // Modify or create a new record in the pivot table
         AccountCollection::updateOrCreate(
             [
                 'user_id' => $userId,
@@ -94,6 +108,36 @@ class CreateReceivable extends CreateRecord
     }
 
     /**
+     * Create a new record in the MonthlyReceivable model.
+     *
+     * @param int $receivableId
+     * @param int $monthId
+     * @return void
+     */
+    protected function createMonthlyReceivable(int $receivableId, int $monthId): void
+    {
+        MonthlyReceivable::create([
+            'receivable_id' => $receivableId,
+            'month_id' => $monthId,
+        ]);
+    }
+
+    /**
+     * Create a new record in the ReceivableYear model.
+     *
+     * @param int $receivableId
+     * @param int $yearId
+     * @return void
+     */
+    protected function createReceivableYear(int $receivableId, int $yearId): void
+    {
+        ReceivableYear::create([
+            'receivable_id' => $receivableId,
+            'year_id' => $yearId,
+        ]);
+    }
+
+    /**
      * Update the Debt record for the specified user and account.
      *
      * @param int $userId
@@ -119,10 +163,6 @@ class CreateReceivable extends CreateRecord
                 'outstanding_balance' => max(0, $newOutstandingBalance),
                 'debt_status' => $debtStatus,
             ]);
-
-            if ($debtStatus === DebtStatusEnum::Cleared) {
-                // Trigger a notification or event if necessary
-            }
         }
     }
 

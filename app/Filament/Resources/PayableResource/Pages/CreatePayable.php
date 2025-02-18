@@ -62,9 +62,11 @@ class CreatePayable extends CreateRecord
         $isGeneral = $data['is_general'];
 
         foreach ($users as $user) {
+            $userId = $isGeneral ? $user->id : $user['user_id'];
+
             $payable = Payable::create([
                 'account_id' => $data['account_id'],
-                'user_id' => $isGeneral ? $user->id : $user['user_id'],
+                'user_id' => $userId,
                 'total_amount' => $isGeneral
                     ? $data['total_amount']
                     : ($user['total_amount'] ?? 0), // Ensure total_amount is properly handled
@@ -102,12 +104,19 @@ class CreatePayable extends CreateRecord
 
     protected function handleDebts(array $data, Collection $users, Collection $payables): void
     {
+        $isGeneral = $data['is_general'];
+
         foreach ($users as $user) {
-            $userId = $user->id;
+            // Conditional access: Check if user is an array (from repeater, custom users)
+            $userId = $isGeneral ? $user->id : $user['user_id'];
             $accountId = $data['account_id'];
 
             // Retrieve the corresponding payable for the user
             $payable = $payables->firstWhere('user_id', $userId);
+            if (!$payable) {
+                continue; // Skip if no corresponding payable is found
+            }
+
             $totalAmount = $payable->total_amount;
 
             // Retrieve (or create) the pivot record from the account_collections table.

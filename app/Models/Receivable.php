@@ -131,6 +131,24 @@ class Receivable extends Model
                         ])
                         ->columns(2),
 
+                    Fieldset::make('Accounting Period')
+                        ->schema([
+                            Select::make('month_id')
+                                ->label('Month')
+                                ->searchable()
+                                ->preload()
+                                ->required()
+                                ->options(Month::all()->pluck('name', 'id')->toArray()) // Fetch months
+                                ->default(Month::where('name', now()->format('F'))->value('id')), // Set the default to the current month's ID
+                            Select::make('year_id')
+                                ->label('Year')
+                                ->searchable()
+                                ->preload()
+                                ->required()
+                                ->options(Year::all()->pluck('year', 'id')->toArray()) // Fetch years
+                                ->default(Year::where('year', now()->year)->value('id')), // Set the default to the current year's ID
+                        ]),
+
                     // Payment Mode Configuration
                     Fieldset::make('Payment Mode')
                         ->schema([
