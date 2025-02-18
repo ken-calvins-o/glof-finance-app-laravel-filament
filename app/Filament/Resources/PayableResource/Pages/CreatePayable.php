@@ -205,7 +205,7 @@ class CreatePayable extends CreateRecord
             'credit_amount' => 0, // Set to 0
             'debit_amount' => $deduction + $outstandingBalance, // Total of total_amount + outstanding_balance
             'balance' => $currentBalance, // Keep the balance the same
-            'net_worth' => $latestSaving ? $latestSaving->net_worth - ($deduction + $outstandingBalance) : 0, // Subtract debit_amount from the previous net_worth, or default to 0
+            'net_worth' => $latestSaving ? $latestSaving->net_worth - $deduction : 0,
         ]);
     }
 
