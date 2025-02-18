@@ -3,6 +3,7 @@
 namespace App\Filament\Resources\PayableResource\Pages;
 
 use App\Filament\Resources\PayableResource;
+use App\Models\AccountCollection;
 use App\Models\Payable;
 use App\Models\MonthlyPayable;
 use App\Models\PayableYear;
@@ -101,30 +102,49 @@ class CreatePayable extends CreateRecord
     protected function handleDebts(array $data, Collection $users, Collection $payables): void
     {
         foreach ($users as $user) {
-            $userId = $user->id;
+            $userId    = $user->id;
             $accountId = $data['account_id'];
 
-            // Retrieve the total_amount from corresponding payable
-            $totalAmount = $payables->where('user_id', $userId)->first()->total_amount;
+            // Retrieve the corresponding payable for the user
+            $payable = $payables->firstWhere('user_id', $userId);
+            $totalAmount = $payable->total_amount;
 
-            // Fetch the `amount` from the AccountCollection pivot table
-            $accountAmount = $user->accounts()->find($accountId)?->pivot->amount ?? 0;
+            // Retrieve (or create) the pivot record from the account_collections table.
+            $accountCollection = AccountCollection::firstOrNew([
+                'user_id'    => $userId,
+                'account_id' => $accountId,
+            ]);
 
-            // Check if total_amount is greater than the accountAmount
-            if ($totalAmount > $accountAmount) {
-                $excess = $totalAmount - $accountAmount;
-                $interest = $excess * 0.01; // Calculate 1% interest
-                $outstandingBalance = $excess + $interest;
+            // Ensure a default amount of 0 if none exists.
+            $currentAmount = $accountCollection->amount ?? 0;
 
-                // Create or update the Debt record
+            // Check if the current account funds are insufficient (<= total amount)
+            if ($totalAmount >= $currentAmount) {
+                // Calculate 1% interest on the total amount.
+                $interest = $totalAmount * 0.01;
+                // The outstanding balance for debt is the total amount plus the interest.
+                $outstandingBalance = $totalAmount + $interest;
+
+                // Create or update the Debt record.
                 Debt::updateOrCreate(
                     ['account_id' => $accountId, 'user_id' => $userId],
                     [
                         'outstanding_balance' => $outstandingBalance,
-                        'debt_status' => DebtStatusEnum::Pending,
+                        'debt_status'         => DebtStatusEnum::Pending,
                     ]
                 );
+
+                // Deduction becomes the total amount plus the interest.
+                $deduction = $totalAmount + $interest;
+            } else {
+                // If funds are sufficient, simply deduct the total amount.
+                $deduction = $totalAmount;
             }
+
+            // Update the account collection's amount.
+            $accountCollection->amount = $currentAmount - $deduction;
+            $accountCollection->save();
         }
     }
+
 }
