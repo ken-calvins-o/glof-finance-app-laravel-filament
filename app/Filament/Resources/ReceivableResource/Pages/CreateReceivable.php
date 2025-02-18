@@ -3,6 +3,7 @@
 namespace App\Filament\Resources\ReceivableResource\Pages;
 
 use App\Enums\DebtStatusEnum;
+use App\Enums\PaymentMode;
 use App\Filament\Resources\ReceivableResource;
 use App\Models\Receivable;
 use App\Models\Debt;
@@ -104,6 +105,7 @@ class CreateReceivable extends CreateRecord
             'account_id' => $accountId,
             'amount_contributed' => $amountContributed,
             'from_savings' => $fromSavings,
+            'payment_method' => $fromSavings ? PaymentMode::From_Savings : PaymentMode::Bank_Transfer,
         ]);
     }
 
@@ -169,6 +171,8 @@ class CreateReceivable extends CreateRecord
     /**
      * Update the user's Savings record.
      *
+     * - Logic changes depending on the value of `from_savings`.
+     *
      * @param int $userId
      * @param float $amountContributed
      * @param bool $fromSavings
@@ -184,17 +188,24 @@ class CreateReceivable extends CreateRecord
         $currentBalance = $lastSaving?->balance ?? 0.00;
         $currentNetWorth = $lastSaving?->net_worth ?? 0.00;
 
-        $debitAmount = $fromSavings ? $amountContributed : 0.00;
-        $creditAmount = !$fromSavings ? $amountContributed : 0.00;
-
-        $newNetWorth = $currentNetWorth + $creditAmount;
-
-        Saving::create([
-            'user_id' => $userId,
-            'credit_amount' => $creditAmount,
-            'debit_amount' => $debitAmount,
-            'balance' => $currentBalance - $debitAmount,
-            'net_worth' => $newNetWorth,
-        ]);
+        if ($fromSavings) {
+            // Logic for when from_savings is true
+            Saving::create([
+                'user_id' => $userId,
+                'credit_amount' => $amountContributed, // Credit = amount contributed
+                'debit_amount' => 0.00, // Debit is 0
+                'balance' => $currentBalance - $amountContributed, // Deduct from balance
+                'net_worth' => $currentNetWorth, // Retain current net worth
+            ]);
+        } else {
+            // Logic for when from_savings is false (existing logic retained)
+            Saving::create([
+                'user_id' => $userId,
+                'credit_amount' => $amountContributed, // Add to credit
+                'debit_amount' => 0.00, // Debit is 0
+                'balance' => $currentBalance, // Balance remains unchanged
+                'net_worth' => $currentNetWorth + $amountContributed, // Increment net worth
+            ]);
+        }
     }
 }
