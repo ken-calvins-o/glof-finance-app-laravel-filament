@@ -192,8 +192,8 @@ class CreateReceivable extends CreateRecord
             // Logic for when from_savings is true
             Saving::create([
                 'user_id' => $userId,
-                'credit_amount' => $amountContributed, // Credit = amount contributed
-                'debit_amount' => 0.00, // Debit is 0
+                'credit_amount' => 0.00, // Credit = amount contributed
+                'debit_amount' => $amountContributed, // Debit is 0
                 'balance' => $currentBalance - $amountContributed, // Deduct from balance
                 'net_worth' => $currentNetWorth, // Retain current net worth
             ]);

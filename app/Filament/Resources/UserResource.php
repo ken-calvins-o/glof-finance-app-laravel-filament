@@ -26,6 +26,11 @@ class UserResource extends Resource
         return 'Members'; // This changes the plural form displayed in the UI
     }
 
+    public static function getLabel(): ?string
+    {
+        return 'Member';
+    }
+
     public static function getNavigationBadge(): ?string
     {
         return User::count();

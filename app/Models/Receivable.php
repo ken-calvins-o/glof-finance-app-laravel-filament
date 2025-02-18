@@ -88,7 +88,8 @@ class Receivable extends Model
                                 ->default(PaymentMode::Bank_Transfer)
                                 ->options(
                                     collect(PaymentMode::cases())
-                                        ->reject(fn($case) => $case === PaymentMode::Credit_Loan) // Exclude the 'Credit_Loan' enum case
+                                        // Exclude both 'From_Savings' and 'Credit_Loan' cases
+                                        ->reject(fn($case) => $case === PaymentMode::From_Savings || $case === PaymentMode::Credit_Loan)
                                         ->mapWithKeys(fn($case) => [$case->value => ucwords(str_replace('_', ' ', $case->value))])
                                 )
                                 ->searchable()
