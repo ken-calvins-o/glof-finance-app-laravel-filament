@@ -214,7 +214,7 @@ class CreatePayable extends CreateRecord
         Saving::create([
             'user_id' => $userId,
             'credit_amount' => 0, // Set to 0
-            'debit_amount' => $deduction + $outstandingBalance, // Total of total_amount + outstanding_balance
+            'debit_amount' => $deduction, // Total of total_amount + outstanding_balance
             'balance' => $currentBalance, // Keep the balance the same
             'net_worth' => $latestSaving ? $latestSaving->net_worth - $deduction : 0,
         ]);
