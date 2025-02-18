@@ -102,7 +102,7 @@ class CreatePayable extends CreateRecord
     protected function handleDebts(array $data, Collection $users, Collection $payables): void
     {
         foreach ($users as $user) {
-            $userId    = $user->id;
+            $userId = $user->id;
             $accountId = $data['account_id'];
 
             // Retrieve the corresponding payable for the user
@@ -111,34 +111,19 @@ class CreatePayable extends CreateRecord
 
             // Retrieve (or create) the pivot record from the account_collections table.
             $accountCollection = AccountCollection::firstOrNew([
-                'user_id'    => $userId,
+                'user_id' => $userId,
                 'account_id' => $accountId,
             ]);
 
-            // Ensure a default amount of 0 if none exists.
+            // Default the current amount to 0 if not already set.
             $currentAmount = $accountCollection->amount ?? 0;
 
-            // Check if the current account funds are insufficient (<= total amount)
-            if ($totalAmount >= $currentAmount) {
-                // Calculate 1% interest on the total amount.
-                $interest = $totalAmount * 0.01;
-                // The outstanding balance for debt is the total amount plus the interest.
-                $outstandingBalance = $totalAmount + $interest;
+            // Calculate the deduction and determine if a debt record is needed.
+            [$deduction, $outstandingBalance] = $this->calculateDeductionAndInterest($totalAmount, $currentAmount);
 
-                // Create or update the Debt record.
-                Debt::updateOrCreate(
-                    ['account_id' => $accountId, 'user_id' => $userId],
-                    [
-                        'outstanding_balance' => $outstandingBalance,
-                        'debt_status'         => DebtStatusEnum::Pending,
-                    ]
-                );
-
-                // Deduction becomes the total amount plus the interest.
-                $deduction = $totalAmount + $interest;
-            } else {
-                // If funds are sufficient, simply deduct the total amount.
-                $deduction = $totalAmount;
+            // If there is an outstanding balance, update the Debt record using firstOrNew.
+            if ($outstandingBalance > 0) {
+                $this->updateDebtRecord($accountId, $userId, $outstandingBalance);
             }
 
             // Update the account collection's amount.
@@ -146,5 +131,52 @@ class CreatePayable extends CreateRecord
             $accountCollection->save();
         }
     }
+
+    /**
+     * Calculate the deduction and the outstanding balance (if any) based on totalAmount and currentAmount.
+     *
+     * @param float|int $totalAmount
+     * @param float|int $currentAmount
+     * @return array   [deduction, outstandingBalance]
+     */
+    protected function calculateDeductionAndInterest($totalAmount, $currentAmount): array
+    {
+        // When funds are insufficient, apply 1% interest on the total amount.
+        if ($totalAmount >= $currentAmount) {
+            $interest = $totalAmount * 0.01;
+            $deduction = $totalAmount + $interest;
+            $outstandingBalance = $deduction;
+        } else {
+            $deduction = $totalAmount;
+            $outstandingBalance = 0;
+        }
+
+        return [$deduction, $outstandingBalance];
+    }
+
+    /**
+     * Retrieve (or create) and update the debt record for the given account and user.
+     *
+     * @param int $accountId
+     * @param int $userId
+     * @param float|int $outstandingBalance
+     * @return void
+     */
+    protected function updateDebtRecord($accountId, $userId, $outstandingBalance): void
+    {
+        // Retrieve the Debt model, or create a new one if it doesn't exist.
+        $debt = Debt::firstOrNew([
+            'account_id' => $accountId,
+            'user_id'    => $userId,
+        ]);
+
+        // Add the new outstanding balance to the existing one (if any).
+        $debt->outstanding_balance += $outstandingBalance;
+
+        // Ensure the debt status remains pending.
+        $debt->debt_status = DebtStatusEnum::Pending;
+        $debt->save();
+    }
+
 
 }
