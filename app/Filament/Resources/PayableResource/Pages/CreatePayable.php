@@ -10,8 +10,8 @@ use App\Models\Debt;
 use App\Models\User;
 use App\Enums\DebtStatusEnum;
 use Filament\Resources\Pages\CreateRecord;
-use Illuminate\Support\Collection;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Collection;
 
 class CreatePayable extends CreateRecord
 {
@@ -21,15 +21,12 @@ class CreatePayable extends CreateRecord
     {
         $users = $this->determineUsers($data);
 
-        // Optimize by bulk inserting Payable records
-        $payables = $this->batchCreatePayables($data, $users);
+        // Create Payable records for users
+        $payables = $this->createPayables($data, $users);
 
-        // Get all created payable IDs
-        $payableIds = $payables->pluck('id');
-
-        // Create MonthlyPayable and PayableYear records in bulk
-        $this->batchCreateMonthlyPayables($payableIds, $data['month_id']);
-        $this->batchCreatePayableYears($payableIds, $data['year_id']);
+        // Create MonthlyPayable and PayableYear records
+        $this->createMonthlyPayables($payables, $data['month_id']);
+        $this->createPayableYears($payables, $data['year_id']);
 
         // Handle debts for users
         $this->handleDebts($data, $users, $payables);
@@ -38,12 +35,6 @@ class CreatePayable extends CreateRecord
         return $payables->last();
     }
 
-    /**
-     * Determine the list of users based on the `is_general` flag.
-     *
-     * @param array $data
-     * @return Collection
-     */
     protected function determineUsers(array $data): Collection
     {
         if ($data['is_general']) {
@@ -53,111 +44,60 @@ class CreatePayable extends CreateRecord
         return $this->getCustomUsers($data['users']);
     }
 
-    /**
-     * Get users for a general payment by excluding specific user IDs.
-     *
-     * @param array $excludedUserIds
-     * @return Collection
-     */
     protected function getGeneralUsers(array $excludedUserIds): Collection
     {
         return User::whereNotIn('id', $excludedUserIds)->select(['id'])->get(); // Fetch only `id`s
     }
 
-    /**
-     * Get users for a custom payment from the repeater data.
-     *
-     * @param array $customUsers
-     * @return Collection
-     */
     protected function getCustomUsers(array $customUsers): Collection
     {
         return collect($customUsers);
     }
 
-    /**
-     * Batch create Payable records for users.
-     *
-     * @param array $data
-     * @param Collection $users
-     * @return Collection
-     */
-    protected function batchCreatePayables(array $data, Collection $users): Collection
+    protected function createPayables(array $data, Collection $users): Collection
     {
+        $payables = collect();
         $isGeneral = $data['is_general'];
-        $payables = [];
 
         foreach ($users as $user) {
-            $payables[] = [
+            $payable = Payable::create([
                 'account_id' => $data['account_id'],
                 'user_id' => $isGeneral ? $user->id : $user['user_id'],
-                'total_amount' => $isGeneral ? $data['total_amount'] : $user['total_amount'],
+                'total_amount' => $isGeneral
+                    ? $data['total_amount']
+                    : ($user['total_amount'] ?? 0), // Ensure total_amount is properly handled
                 'is_general' => $isGeneral,
-                'from_savings' => $isGeneral ? $data['from_savings'] : $user['from_savings'],
-                'created_at' => now(),
-                'updated_at' => now(),
-            ];
+                'from_savings' => $isGeneral
+                    ? $data['from_savings']
+                    : ($user['from_savings'] ?? 0), // Ensure from_savings has a default
+            ]);
+
+            $payables->push($payable);
         }
 
-        // Perform a single insert query for payables
-        Payable::insert($payables);
-
-        // Retrieve recently created payables
-        return Payable::whereIn('user_id', $users->pluck('id'))->where('account_id', $data['account_id'])->get();
+        return $payables;
     }
 
-    /**
-     * Batch create MonthlyPayable records.
-     *
-     * @param Collection $payableIds
-     * @param int $monthId
-     * @return void
-     */
-    protected function batchCreateMonthlyPayables(Collection $payableIds, int $monthId): void
+    protected function createMonthlyPayables(Collection $payables, int $monthId): void
     {
-        $monthlyPayables = $payableIds->map(function ($payableId) use ($monthId) {
-            return [
-                'payable_id' => $payableId,
+        foreach ($payables as $payable) {
+            MonthlyPayable::create([
+                'payable_id' => $payable->id,
                 'month_id' => $monthId,
-                'created_at' => now(),
-                'updated_at' => now(),
-            ];
-        })->all();
-
-        // Perform a single insert query
-        MonthlyPayable::insert($monthlyPayables);
+            ]);
+        }
     }
 
-    /**
-     * Batch create PayableYear records.
-     *
-     * @param Collection $payableIds
-     * @param int $yearId
-     * @return void
-     */
-    protected function batchCreatePayableYears(Collection $payableIds, int $yearId): void
+    protected function createPayableYears(Collection $payables, int $yearId): void
     {
-        $payableYears = $payableIds->map(function ($payableId) use ($yearId) {
-            return [
-                'payable_id' => $payableId,
+        foreach ($payables as $payable) {
+            PayableYear::create([
+                'payable_id' => $payable->id,
                 'year_id' => $yearId,
-                'created_at' => now(),
-                'updated_at' => now(),
-            ];
-        })->all();
-
-        // Perform a single insert query
-        PayableYear::insert($payableYears);
+            ]);
+        }
     }
 
-    /**
-     * Handle debts for users where total_amount is less than the account collection amount.
-     *
-     * @param array $data
-     * @param Collection $users
-     * @param Collection $payables
-     * @return void
-     */
     protected function handleDebts(array $data, Collection $users, Collection $payables): void
     {
         foreach ($users as $user) {
@@ -168,7 +108,7 @@ class CreatePayable extends CreateRecord
             $totalAmount = $payables->where('user_id', $userId)->first()->total_amount;
 
             // Fetch the `amount` from the AccountCollection pivot table
-            $accountAmount = $user->accounts()->find($accountId)->pivot->amount ?? 0;
+            $accountAmount = $user->accounts()->find($accountId)?->pivot->amount ?? 0;
 
             // Check if total_amount is greater than the accountAmount
             if ($totalAmount > $accountAmount) {
