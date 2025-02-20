@@ -20,16 +20,19 @@
         }
 
         .watermark {
+            -webkit-transform: rotate(331deg);
+            -moz-transform: rotate(331deg);
+            -o-transform: rotate(331deg);
+            transform: rotate(331deg) translate(-50%, -50%);
+            font-size: 12em;
+            color: rgba(255, 5, 5, 0.17);
             position: absolute;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%);
-            font-size: 100px;
-            color: rgba(200, 200, 200, 0.2);
-            font-weight: bold;
+            font-family: 'Denk One', sans-serif;
             text-transform: uppercase;
-            z-index: -1;
-            white-space: nowrap;
+            left: 50%;
+            top: 50%;
+            padding-left: 0; /* Remove padding */
+            padding-top: 0;  /* Remove padding */
         }
 
         .header {

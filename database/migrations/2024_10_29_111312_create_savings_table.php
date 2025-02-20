@@ -19,7 +19,6 @@ return new class extends Migration
             $table->decimal('debit_amount', 10, 2)->default(0.00);
             $table->decimal('balance', 10, 2)->default(0.00);
             $table->decimal('net_worth', 10, 2);
-            $table->string('payment_method')->default(PaymentMode::Bank_Transfer);
             $table->timestamps();
         });
     }

@@ -14,7 +14,7 @@ class AccountSeeder extends Seeder
     public function run(): void
     {
         $accounts = [
-            'Administration', 'Bereavement', 'Insurance', 'Miscellaneous', 'Party/Rural Visit'
+            'Administration', 'Bereavement', 'Insurance', 'Host/TQ Outstanding', 'Miscellaneous', 'Party/Rural Visit'
         ];
 
         foreach ($accounts as $account) {

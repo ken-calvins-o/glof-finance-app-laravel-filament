@@ -23,6 +23,7 @@ use Illuminate\Session\Middleware\AuthenticateSession;
 use Illuminate\Session\Middleware\StartSession;
 use Illuminate\Support\Facades\Blade;
 use Illuminate\View\Middleware\ShareErrorsFromSession;
+use Leandrocfe\FilamentApexCharts\FilamentApexChartsPlugin;
 use pxlrbt\FilamentSpotlight\SpotlightPlugin;
 
 class AppPanelProvider extends PanelProvider
@@ -51,7 +52,9 @@ class AppPanelProvider extends PanelProvider
                     ->alwaysShowModal()
                     ->excludes([DebtResource::class]),
                 SpotlightPlugin::make(),
-                GlobalSearchModalPlugin::make(),
+                GlobalSearchModalPlugin::make()
+                    ->slideOver(),
+                FilamentApexChartsPlugin::make()
             ])
             ->discoverWidgets(in: app_path('Filament/Widgets'), for: 'App\\Filament\\Widgets')
             ->widgets([
