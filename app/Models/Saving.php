@@ -36,21 +36,25 @@ class Saving extends Model
                             $userId = $get('user_id');
 
                             if ($userId) {
-                                // Fetch and set current net worth only once when user changes
+                                // Fetch the current net worth dynamically once when user changes
                                 $currentNetWorth = Saving::where('user_id', $userId)
                                     ->latest('id')
                                     ->value('net_worth') ?? 0;
 
-                                // Set current, net-worth based on the selected member.
+                                // Set the current net worth
                                 $set('current_net_worth', $currentNetWorth);
 
-                                // Precalculate expected net worth
+                                // Recalculate dependent fields
                                 $creditAmount = $get('credit_amount') ?? 0;
+
+                                // Prevent excessive updates
                                 $set('net_worth', $currentNetWorth + $creditAmount);
+                                $set('balance', $creditAmount); // balance mirrors credit_amount
                             } else {
-                                // Reset if no member is selected
+                                // Reset fields if no member is selected
                                 $set('current_net_worth', 0);
                                 $set('net_worth', 0);
+                                $set('balance', 0);
                             }
                         }),
 
@@ -64,10 +68,13 @@ class Saving extends Model
                         ->reactive()
                         ->debounce(300) // Add debounce to prevent recalculations on every keystroke
                         ->afterStateUpdated(function (callable $get, callable $set) {
-                            // Update net worth efficiently without fetching the database
+                            // Efficiently update dependent fields when credit amount changes
                             $creditAmount = $get('credit_amount') ?? 0;
                             $currentNetWorth = $get('current_net_worth') ?? 0;
+
+                            // Prevent excessive updates on every keystroke
                             $set('net_worth', $currentNetWorth + $creditAmount);
+                            $set('balance', $creditAmount); // balance mirrors credit_amount
                         }),
 
                     // Read-Only New Net Worth Field
@@ -76,13 +83,23 @@ class Saving extends Model
                         ->prefix('Kes')
                         ->readOnly() // Use readOnly instead of disabled (to allow styling)
                         ->default(0) // Default value if no calculations
-                        ->reactive(), // Ensure it updates dynamically when inputs change
+                        ->reactive() // Ensure it updates dynamically when inputs change
+                        ->debounce(300), // Ensure smooth updates with debounce
+
+                    // Read-Only Balance Field
+                    TextInput::make('balance')
+                        ->label('Estimated Savings')
+                        ->prefix('Kes')
+                        ->readOnly() // Prevent manual editing of balance
+                        ->default(0) // Default value initially
+                        ->reactive() // Dynamically updates alongside credit_amount
+                        ->debounce(300), // Ensure smooth updates with debounce
 
                     // Hidden Field to Track Current Net Worth
                     TextInput::make('current_net_worth')
                         ->hidden() // Keep it hidden from user input
                         ->default(0), // Default value
-                ])->columns(3),
+                ]),
         ];
     }
 }
