@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Models\Debt;
+use App\Models\Saving;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use InvalidArgumentException;
@@ -46,11 +47,13 @@ class DebtInterestService
             DB::beginTransaction();
 
             $debts = $this->getDebtsWithOutstandingBalance();
+            $netWorthByUser = [];
 
             foreach ($debts as $debt) {
                 try {
                     $interest = $this->calculateInterest($debt);
                     $this->updateDebtBalance($debt, $interest);
+                    $this->recordInterestInSavings($debt->user_id, $interest, $netWorthByUser);
 
                     $stats['processed']++;
                     $stats['total_interest'] += $interest;
@@ -120,10 +123,8 @@ class DebtInterestService
      */
     private function updateDebtBalance(Debt $debt, float $interest): void
     {
-        $newBalance = round(
-            floatval($debt->outstanding_balance) + $interest,
-            2
-        );
+        $previousBalance = floatval($debt->outstanding_balance);
+        $newBalance = round($previousBalance + $interest, 2);
 
         $debt->update([
             'outstanding_balance' => $newBalance,
@@ -135,12 +136,49 @@ class DebtInterestService
                 'debt_id' => $debt->id,
                 'user_id' => $debt->user_id,
                 'account_id' => $debt->account_id,
-                'previous_balance' => floatval($debt->outstanding_balance),
+                'previous_balance' => $previousBalance,
                 'interest_applied' => $interest,
                 'new_balance' => $newBalance,
                 'interest_rate' => $this->interestRate * 100 . '%',
             ]
         );
+    }
+
+    /**
+     * Record interest as a debit in the user's savings and update net worth.
+     *
+     * @param int $userId
+     * @param float $interest
+     * @param array<int, float> $netWorthByUser
+     * @return void
+     */
+    private function recordInterestInSavings(int $userId, float $interest, array &$netWorthByUser): void
+    {
+        if (!array_key_exists($userId, $netWorthByUser)) {
+            $netWorthByUser[$userId] = $this->getCurrentNetWorth($userId);
+        }
+
+        $newNetWorth = round($netWorthByUser[$userId] - $interest, 2);
+
+        Saving::create([
+            'user_id' => $userId,
+            'credit_amount' => 0.00,
+            'debit_amount' => $interest,
+            'balance' => 0.00,
+            'net_worth' => $newNetWorth,
+        ]);
+
+        $netWorthByUser[$userId] = $newNetWorth;
+    }
+
+    /**
+     * Get the latest known net worth for a user from savings records.
+     */
+    private function getCurrentNetWorth(int $userId): float
+    {
+        return (float) (Saving::where('user_id', $userId)
+            ->latest('id')
+            ->value('net_worth') ?? 0.0);
     }
 
     /**
