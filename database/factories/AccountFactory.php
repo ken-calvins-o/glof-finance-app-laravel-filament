@@ -22,8 +22,6 @@ class AccountFactory extends Factory
     {
         return [
             'name' => $this->faker->name(),
-            'description' => $this->faker->text(),
-            'type' => $this->faker->randomElement(["ad-hoc","one-off","recurring"]),
         ];
     }
 }

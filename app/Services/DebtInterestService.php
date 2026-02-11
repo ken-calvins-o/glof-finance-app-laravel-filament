@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Models\Debt;
 use App\Models\Saving;
+use App\Models\AccountCollection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use InvalidArgumentException;
@@ -48,12 +49,14 @@ class DebtInterestService
 
             $debts = $this->getDebtsWithOutstandingBalance();
             $netWorthByUser = [];
+            $accountAmountByKey = [];
 
             foreach ($debts as $debt) {
                 try {
                     $interest = $this->calculateInterest($debt);
                     $this->updateDebtBalance($debt, $interest);
                     $this->recordInterestInSavings($debt->user_id, $interest, $netWorthByUser);
+                    $this->updateAccountCollectionAmount($debt->user_id, $debt->account_id, $interest, $accountAmountByKey);
 
                     $stats['processed']++;
                     $stats['total_interest'] += $interest;
@@ -237,5 +240,50 @@ class DebtInterestService
     {
         return $this->interestRate;
     }
-}
 
+    /**
+     * Update the account collection amount for a user's account by adding interest.
+     *
+     * @param int $userId
+     * @param int|null $accountId
+     * @param float $interest
+     * @param array<string, array{id:int, amount:float}> $accountAmountByKey
+     * @return void
+     */
+    private function updateAccountCollectionAmount(int $userId, ?int $accountId, float $interest, array &$accountAmountByKey): void
+    {
+        if (!$accountId) {
+            return;
+        }
+
+        $key = $userId . ':' . $accountId;
+
+        if (!array_key_exists($key, $accountAmountByKey)) {
+            $collection = AccountCollection::where('user_id', $userId)
+                ->where('account_id', $accountId)
+                ->lockForUpdate()
+                ->first();
+
+            if (!$collection) {
+                Log::warning('Account collection not found for interest update', [
+                    'user_id' => $userId,
+                    'account_id' => $accountId,
+                ]);
+                return;
+            }
+
+            $accountAmountByKey[$key] = [
+                'id' => $collection->id,
+                'amount' => (float) $collection->amount,
+            ];
+        }
+
+        $newAmount = round($accountAmountByKey[$key]['amount'] - $interest, 2);
+
+        AccountCollection::whereKey($accountAmountByKey[$key]['id'])->update([
+            'amount' => $newAmount,
+        ]);
+
+        $accountAmountByKey[$key]['amount'] = $newAmount;
+    }
+}
