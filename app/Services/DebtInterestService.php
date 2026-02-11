@@ -5,8 +5,10 @@ namespace App\Services;
 use App\Models\Debt;
 use App\Models\Saving;
 use App\Models\AccountCollection;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Carbon;
 use InvalidArgumentException;
 
 /**
@@ -44,40 +46,50 @@ class DebtInterestService
             'total_interest' => 0.0,
         ];
 
+        $periodDate = $this->currentInterestPeriodDate();
+        $lockKey = 'debt-interest:' . $periodDate;
+        $lock = Cache::lock($lockKey, 300);
+
+        if (!$lock->get()) {
+            Log::warning('Debt interest job already running or recently completed', [
+                'period' => $periodDate,
+            ]);
+
+            return $stats;
+        }
+
         try {
-            DB::beginTransaction();
+            DB::transaction(function () use (&$stats, $periodDate) {
+                $debts = $this->getDebtsWithOutstandingBalance($periodDate);
+                $netWorthByUser = [];
+                $accountAmountByKey = [];
 
-            $debts = $this->getDebtsWithOutstandingBalance();
-            $netWorthByUser = [];
-            $accountAmountByKey = [];
+                foreach ($debts as $debt) {
+                    try {
+                        $interest = $this->calculateInterest($debt);
+                        $this->updateDebtBalance($debt, $interest, $periodDate);
+                        $this->recordInterestInSavings($debt->user_id, $interest, $netWorthByUser);
+                        $this->updateAccountCollectionAmount($debt->user_id, $debt->account_id, $interest, $accountAmountByKey);
 
-            foreach ($debts as $debt) {
-                try {
-                    $interest = $this->calculateInterest($debt);
-                    $this->updateDebtBalance($debt, $interest);
-                    $this->recordInterestInSavings($debt->user_id, $interest, $netWorthByUser);
-                    $this->updateAccountCollectionAmount($debt->user_id, $debt->account_id, $interest, $accountAmountByKey);
-
-                    $stats['processed']++;
-                    $stats['total_interest'] += $interest;
-                } catch (\Exception $e) {
-                    $stats['errors']++;
-                    Log::error(
-                        'Failed to apply interest to debt',
-                        [
-                            'debt_id' => $debt->id,
-                            'user_id' => $debt->user_id,
-                            'account_id' => $debt->account_id,
-                            'error' => $e->getMessage(),
-                        ]
-                    );
+                        $stats['processed']++;
+                        $stats['total_interest'] += $interest;
+                    } catch (\Exception $e) {
+                        $stats['errors']++;
+                        Log::error(
+                            'Failed to apply interest to debt',
+                            [
+                                'debt_id' => $debt->id,
+                                'user_id' => $debt->user_id,
+                                'account_id' => $debt->account_id,
+                                'error' => $e->getMessage(),
+                            ]
+                        );
+                    }
                 }
-            }
+            });
 
-            DB::commit();
             $this->logSummary($stats);
         } catch (\Exception $e) {
-            DB::rollBack();
             Log::critical(
                 'Critical error in monthly interest application',
                 [
@@ -86,6 +98,8 @@ class DebtInterestService
                 ]
             );
             throw $e;
+        } finally {
+            $lock->release();
         }
 
         return $stats;
@@ -94,11 +108,17 @@ class DebtInterestService
     /**
      * Retrieve all debts with outstanding balance greater than zero.
      *
+     * @param string $periodDate
      * @return \Illuminate\Database\Eloquent\Collection
      */
-    private function getDebtsWithOutstandingBalance()
+    private function getDebtsWithOutstandingBalance(string $periodDate)
     {
         return Debt::where('outstanding_balance', '>', 0)
+            ->where(function ($query) use ($periodDate) {
+                $query->whereNull('last_interest_applied_on')
+                    ->orWhere('last_interest_applied_on', '<', $periodDate);
+            })
+            ->lockForUpdate()
             ->with(['user', 'account'])
             ->get();
     }
@@ -122,15 +142,17 @@ class DebtInterestService
      *
      * @param Debt $debt
      * @param float $interest
+     * @param string $periodDate
      * @return void
      */
-    private function updateDebtBalance(Debt $debt, float $interest): void
+    private function updateDebtBalance(Debt $debt, float $interest, string $periodDate): void
     {
         $previousBalance = floatval($debt->outstanding_balance);
         $newBalance = round($previousBalance + $interest, 2);
 
         $debt->update([
             'outstanding_balance' => $newBalance,
+            'last_interest_applied_on' => $periodDate,
         ]);
 
         Log::info(
@@ -143,6 +165,7 @@ class DebtInterestService
                 'interest_applied' => $interest,
                 'new_balance' => $newBalance,
                 'interest_rate' => $this->interestRate * 100 . '%',
+                'interest_period' => $periodDate,
             ]
         );
     }
@@ -242,7 +265,7 @@ class DebtInterestService
     }
 
     /**
-     * Update the account collection amount for a user's account by adding interest.
+     * Update the account collection amount for a user's account by subtracting interest.
      *
      * @param int $userId
      * @param int|null $accountId
@@ -285,5 +308,13 @@ class DebtInterestService
         ]);
 
         $accountAmountByKey[$key]['amount'] = $newAmount;
+    }
+
+    /**
+     * Resolve the current interest period date (first day of the month).
+     */
+    private function currentInterestPeriodDate(): string
+    {
+        return Carbon::now()->startOfMonth()->toDateString();
     }
 }

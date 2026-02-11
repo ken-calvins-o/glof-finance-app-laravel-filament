@@ -14,6 +14,16 @@ class Income extends Model
 {
     use HasFactory;
 
+    protected $fillable = [
+        'user_id',
+        'account_id',
+        'source',
+        'origin',
+        'income_amount',
+        'interest_amount',
+        'description',
+    ];
+
     protected $casts = [
         'id' => 'integer',
         'interest_amount' => 'decimal:2',

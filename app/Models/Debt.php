@@ -24,6 +24,7 @@ class Debt extends Model
         'repayment_amount' => 'decimal:2',
         'from_savings' => 'boolean',
         'debt_status' => DebtStatusEnum::class,
+        'last_interest_applied_on' => 'date',
     ];
 
     // Define relationships

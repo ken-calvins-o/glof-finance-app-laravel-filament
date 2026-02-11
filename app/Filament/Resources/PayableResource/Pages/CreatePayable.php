@@ -10,6 +10,7 @@ use App\Models\PayableYear;
 use App\Models\Debt;
 use App\Models\Saving;
 use App\Models\User;
+use App\Models\Income;
 use App\Enums\DebtStatusEnum;
 use Filament\Resources\Pages\CreateRecord;
 use Illuminate\Database\Eloquent\Model;
@@ -131,10 +132,15 @@ class CreatePayable extends CreateRecord
                 $currentAmount = max(0, $accountCollection->amount ?? 0);
 
                 // Correct calculation factoring in reset currentAmount
-                [$deduction, $outstandingBalance] = $this->calculateDeductionAndInterest($totalAmount, $currentAmount);
+                [$deduction, $outstandingBalance, $interestAmount] = $this->calculateDeductionAndInterest($totalAmount, $currentAmount);
 
                 if ($outstandingBalance > 0) {
                     $this->updateDebtRecord($accountId, $userId, $outstandingBalance);
+
+                    // Record interest as income when debt is incurred
+                    if ($interestAmount > 0) {
+                        $this->recordInterestAsIncome($userId, $accountId, $interestAmount);
+                    }
                 }
 
                 // Subtract deduction from actual AccountCollection amount (not reset amount)
@@ -168,7 +174,7 @@ class CreatePayable extends CreateRecord
      *
      * @param float|int $totalAmount
      * @param float|int $currentAmount
-     * @return array   [deduction, outstandingBalance]
+     * @return array   [deduction, outstandingBalance, interestAmount]
      */
     protected function calculateDeductionAndInterest($totalAmount, $currentAmount): array
     {
@@ -177,15 +183,16 @@ class CreatePayable extends CreateRecord
 
         if ($totalAmount > $resetCurrentAmount) {
             $shortfall = $totalAmount - $resetCurrentAmount;
-            $interest = $shortfall * 0.01;
+            $interest = round($shortfall * 0.01, 2);
             $deduction = $totalAmount + $interest;
             $outstandingBalance = $deduction - $resetCurrentAmount;
         } else {
             $deduction = $totalAmount;
             $outstandingBalance = 0;
+            $interest = 0;
         }
 
-        return [$deduction, $outstandingBalance];
+        return [$deduction, $outstandingBalance, $interest];
     }
 
 
@@ -233,6 +240,28 @@ class CreatePayable extends CreateRecord
             'debit_amount' => $deduction,
             'balance' => $currentBalance, // Balance remains unchanged for from_savings = false
             'net_worth' => $currentNetWorth - $deduction, // Deduct net worth for from_savings = false
+        ]);
+    }
+
+    /**
+     * Record interest amount as an income record.
+     *
+     * Creates an Income record capturing the interest charged when a user incurs debt
+     * during payable processing.
+     *
+     * @param int $userId
+     * @param int $accountId
+     * @param float $interestAmount
+     * @return void
+     */
+    protected function recordInterestAsIncome(int $userId, int $accountId, float $interestAmount): void
+    {
+        Income::create([
+            'user_id' => $userId,
+            'account_id' => $accountId,
+            'origin' => 'Payable Interest',
+            'interest_amount' => $interestAmount,
+            'income_amount' => 0,
         ]);
     }
 
