@@ -30,46 +30,75 @@ class StaticReadOnlyTable extends Page
         // Get all users and sort them alphabetically by name
         $users = User::all()->sortBy('name');
 
+        $userIds = $users->pluck('id')->all();
+        $accountIds = $accounts->pluck('id')->all();
+
+        // Batch fetch latest AccountCollection per user+account (ordered by id desc to get latest)
+        $accountCollections = AccountCollection::whereIn('user_id', $userIds)
+            ->whereIn('account_id', $accountIds)
+            ->orderByDesc('id')
+            ->get()
+            // ensure unique per user-account keeping the latest
+            ->unique(function ($item) {
+                return $item->user_id . '-' . $item->account_id;
+            })
+            ->keyBy(function ($item) {
+                return $item->user_id . '-' . $item->account_id;
+            });
+
+        // Batch fetch latest Saving per user
+        $savingsMap = Saving::whereIn('user_id', $userIds)
+            ->orderByDesc('id')
+            ->get()
+            ->unique('user_id')
+            ->pluck('balance', 'user_id');
+
+        // Batch fetch latest net_worth per user
+        $netWorthMap = Saving::whereIn('user_id', $userIds)
+            ->orderByDesc('id')
+            ->get()
+            ->unique('user_id')
+            ->pluck('net_worth', 'user_id');
+
+        // Batch fetch latest Loan balance per user
+        $loanMap = Loan::whereIn('user_id', $userIds)
+            ->orderByDesc('created_at')
+            ->get()
+            ->unique('user_id')
+            ->pluck('balance', 'user_id');
+
+        // Batch fetch latest credited Debt outstanding_balance per user (account_id IS NULL)
+        $debtMap = \App\Models\Debt::whereIn('user_id', $userIds)
+            ->whereNull('account_id')
+            ->orderByDesc('created_at')
+            ->get()
+            ->unique('user_id')
+            ->pluck('outstanding_balance', 'user_id');
+
         // Preparing the table data
         $data = [];
 
         foreach ($users as $user) {
-            $row = ['User' => $user->name]; // Assuming "name" exists in the users table
+            $row = ['User' => $user->name];
 
-            // Add data for each account
+            // Add data for each account using the preloaded AccountCollection map
             foreach ($accounts as $account) {
-                $latestContribution = AccountCollection::where('user_id', $user->id)
-                    ->where('account_id', $account->id)
-                    ->value('amount'); // Assuming this field exists in the receivables table
-
-                // Use the actual account name as the key
+                $key = $user->id . '-' . $account->id;
+                $latestContribution = $accountCollections->has($key) ? $accountCollections->get($key)->amount : null;
                 $row[$account->name] = $latestContribution ?? 0.00;
             }
 
             // Registration Fee from User model
             $row['Registration Fee'] = $user->registration_fee ?? 0.00;
 
-            // Fetch "Savings Balance" from the savings table/model
-            $savingsBalance = Saving::where('user_id', $user->id)
-                ->latest('id') // Get the latest record based on primary key "id"
-                ->value('balance');
+            // Savings and Net Worth from preloaded maps
+            $row['Savings'] = $savingsMap->get($user->id, 0.00);
+            $row['Net Worth'] = $netWorthMap->get($user->id, 0.00);
 
-            $row['Savings'] = $savingsBalance ?? 0.00; // Default to 0.00 if null
-
-            // Fetch the latest "Net Worth" from the savings table/model
-            $netWorth = Saving::where('user_id', $user->id)
-                ->latest('id') // Get the latest record based on primary key "id"
-                ->value('net_worth');
-            $row['Net Worth'] = $netWorth ?? 0.00; // Default to 0.00 if null
-
-            // Fetch loan balance: prefer the user's credited-loan Debt outstanding_balance (account_id IS NULL)
-            $debtBalance = \App\Models\Debt::where('user_id', $user->id)
-                ->whereNull('account_id')
-                ->orderByDesc('created_at')
-                ->value('outstanding_balance');
-
+            // Loan: prefer credited debt outstanding_balance if available; otherwise fallback to loan balance
+            $debtBalance = $debtMap->get($user->id);
             if (is_null($debtBalance)) {
-                $loanBalance = Loan::where('user_id', $user->id)->value('balance');
+                $loanBalance = $loanMap->get($user->id, 0.00);
                 $row['Loan'] = $loanBalance ?? 0.00;
             } else {
                 $row['Loan'] = max(0, (float) $debtBalance);
