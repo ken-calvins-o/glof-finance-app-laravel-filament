@@ -62,9 +62,18 @@ class StaticReadOnlyTable extends Page
                 ->value('net_worth');
             $row['Net Worth'] = $netWorth ?? 0.00; // Default to 0.00 if null
 
-            // Fetch loan balance
-            $loanBalance = Loan::where('user_id', $user->id)->value('balance');
-            $row['Loan'] = $loanBalance ?? 0.00;
+            // Fetch loan balance: prefer the user's credited-loan Debt outstanding_balance (account_id IS NULL)
+            $debtBalance = \App\Models\Debt::where('user_id', $user->id)
+                ->whereNull('account_id')
+                ->orderByDesc('created_at')
+                ->value('outstanding_balance');
+
+            if (is_null($debtBalance)) {
+                $loanBalance = Loan::where('user_id', $user->id)->value('balance');
+                $row['Loan'] = $loanBalance ?? 0.00;
+            } else {
+                $row['Loan'] = max(0, (float) $debtBalance);
+            }
 
             // Add user row to data
             $data[] = $row;

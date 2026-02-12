@@ -3,12 +3,12 @@
 namespace App\Filament\Resources;
 
 use App\Filament\Resources\LoanResource\Pages;
-use App\Filament\Resources\LoanResource\RelationManagers;
 use App\Models\Loan;
 use Filament\Forms\Form;
 use Filament\Resources\Resource;
 use Filament\Tables;
 use Filament\Tables\Table;
+use Illuminate\Database\Eloquent\Builder;
 
 class LoanResource extends Resource
 {
@@ -51,8 +51,29 @@ class LoanResource extends Resource
                     ->formatStateUsing(fn($state) => number_format($state, 2))
                     ->searchable(),
                 Tables\Columns\TextColumn::make('balance')
+                    ->label('Balance')
                     ->prefix('Kes ')
-                    ->formatStateUsing(fn($state) => number_format($state, 2))
+                    ->getStateUsing(function ($record) {
+                        // Prefer eager-loaded debts when available
+                        $debt = null;
+
+                        if (isset($record->user) && isset($record->user->debts) && $record->user->debts->count()) {
+                            $debt = $record->user->debts->first();
+                        } else {
+                            // Fallback to direct query: find the most recent Debt for the user with no account ("Credited Loan")
+                            $debt = \App\Models\Debt::where('user_id', $record->user_id)
+                                ->whereNull('account_id')
+                                ->orderByDesc('created_at')
+                                ->first();
+                        }
+
+                        $amount = $debt ? $debt->outstanding_balance : ($record->balance ?? 0);
+
+                        // Ensure non-negative and return formatted string (state expected to be raw value; we'll format here)
+                        $amount = max(0, $amount);
+
+                        return number_format($amount, 2);
+                    })
                     ->searchable(),
                 Tables\Columns\TextColumn::make('interest')
                     ->searchable()
@@ -90,6 +111,14 @@ class LoanResource extends Resource
                     Tables\Actions\DeleteBulkAction::make(),
                 ]),
             ]);
+    }
+
+    // Eager-load user's credited-loan debts to avoid N+1 queries when rendering the table
+    public static function getEloquentQuery(): Builder
+    {
+        return parent::getEloquentQuery()->with(['user.debts' => function ($q) {
+            $q->whereNull('account_id')->orderByDesc('created_at');
+        }]);
     }
 
     public static function getRelations(): array
