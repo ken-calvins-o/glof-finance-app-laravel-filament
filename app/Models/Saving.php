@@ -45,7 +45,7 @@ class Saving extends Model
                                 $set('current_net_worth', $currentNetWorth);
 
                                 // Recalculate dependent fields
-                                $creditAmount = $get('credit_amount') ?? 0;
+                                $creditAmount = floatval($get('credit_amount') ?? 0);
 
                                 // Prevent excessive updates
                                 $set('net_worth', $currentNetWorth + $creditAmount);
@@ -63,13 +63,14 @@ class Saving extends Model
                         ->label('Amount')
                         ->required()
                         ->numeric()
+                        ->step('0.01')
                         ->hintIcon('heroicon-o-currency-dollar')
                         ->prefix('Kes')
                         ->reactive()
-                        ->debounce(300) // Add debounce to prevent recalculations on every keystroke
+                        ->debounce(700) // increase debounce to reduce mid-typing server updates and lost keystrokes
                         ->afterStateUpdated(function (callable $get, callable $set) {
                             // Efficiently update dependent fields when credit amount changes
-                            $creditAmount = $get('credit_amount') ?? 0;
+                            $creditAmount = floatval($get('credit_amount') ?? 0);
                             $currentNetWorth = $get('current_net_worth') ?? 0;
 
                             // Prevent excessive updates on every keystroke
@@ -83,8 +84,7 @@ class Saving extends Model
                         ->prefix('Kes')
                         ->readOnly() // Use readOnly instead of disabled (to allow styling)
                         ->default(0) // Default value if no calculations
-                        ->reactive() // Ensure it updates dynamically when inputs change
-                        ->debounce(300), // Ensure smooth updates with debounce
+                        ->reactive(), // Ensure it updates dynamically when inputs change
 
                     // Read-Only Balance Field
                     TextInput::make('balance')
@@ -92,8 +92,7 @@ class Saving extends Model
                         ->prefix('Kes')
                         ->readOnly() // Prevent manual editing of balance
                         ->default(0) // Default value initially
-                        ->reactive() // Dynamically updates alongside credit_amount
-                        ->debounce(300), // Ensure smooth updates with debounce
+                        ->reactive(), // Dynamically updates alongside credit_amount
 
                     // Hidden Field to Track Current Net Worth
                     TextInput::make('current_net_worth')

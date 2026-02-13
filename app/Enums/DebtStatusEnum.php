@@ -23,6 +23,12 @@ enum DebtStatusEnum: string
             self::Partially_Paid => Color::Indigo,
             self::Defaulted => Color::Red,
             self::Cleared => Color::Green,
+            // Explicitly handle additional states to avoid unhandled-match errors
+            self::Credited => Color::Blue,
+            self::Rejected => Color::Red,
+
+            // Fallback for any future enum values: use a neutral color
+            default => Color::Slate,
         };
 
     }

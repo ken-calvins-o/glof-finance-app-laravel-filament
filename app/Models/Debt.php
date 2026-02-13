@@ -11,6 +11,7 @@ use Filament\Forms\Components\ToggleButtons;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Filament\Notifications\Notification;
 
 class Debt extends Model
 {
@@ -80,9 +81,21 @@ class Debt extends Model
                                 ->label('Enter Amount')
                                 ->required()
                                 ->numeric()
+                                ->reactive()
                                 ->hintIcon('heroicon-o-currency-dollar')
                                 ->prefix('Kes')
-                                ->minValue(1),
+                                ->minValue(1)
+                                ->afterStateUpdated(function (callable $get, $state) {
+                                    // Show a live Filament notification if the repayment exceeds outstanding balance
+                                    $outstanding = $get('outstanding_balance') ?? 0;
+                                    if (!is_null($state) && is_numeric($state) && $state > $outstanding) {
+                                        Notification::make()
+                                            ->warning()
+                                            ->title('Repayment exceeds outstanding')
+                                            ->body('The repayment amount entered is greater than the current outstanding balance. Please enter a smaller amount.')
+                                            ->send();
+                                    }
+                                }),
                         ]),
 
                     Fieldset::make('Payment Mode')

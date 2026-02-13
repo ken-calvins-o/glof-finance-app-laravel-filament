@@ -9,6 +9,7 @@ use App\Models\Loan;
 use App\Models\Saving;
 use App\Models\AccountCollection;
 use Filament\Actions;
+use Filament\Notifications\Notification;
 use Filament\Resources\Pages\EditRecord;
 use Illuminate\Support\Facades\DB;
 
@@ -31,6 +32,17 @@ class EditDebt extends EditRecord
             // Step 1: Retrieve the new repayment amount
             $newRepaymentAmount = $data['repayment_amount'];
             $fromSavings = $data['from_savings'] ?? false;
+
+            // Server-side validation: repayment must not exceed outstanding balance
+            if ($newRepaymentAmount > $record->outstanding_balance) {
+                Notification::make()
+                    ->danger()
+                    ->title('Invalid repayment')
+                    ->body('Repayment amount cannot exceed the outstanding balance.')
+                    ->send();
+
+                throw new \Exception('Repayment amount cannot exceed the outstanding balance.');
+            }
 
             // Step 2: Reduce the outstanding_balance for the Debt record
             $record->outstanding_balance -= $newRepaymentAmount;
@@ -64,12 +76,23 @@ class EditDebt extends EditRecord
                 $loan->save(); // Save the updated Loan record
             }
 
-            // Step 5: Update the Saving model
+            // Step 5: Update the AccountCollection amount by incrementing with the repayment
+            AccountCollection::updateOrCreate(
+                [
+                    'user_id' => $record->user_id,
+                    'account_id' => $record->account_id,
+                ],
+                [
+                    'amount' => DB::raw("COALESCE(amount, 0) + $newRepaymentAmount"),
+                ]
+            );
+
+            // Step 6: Update the Saving model
             $latestSavings = $record->user->savings()->latest()->first();
             $currentBalance = $latestSavings ? $latestSavings->balance : 0;
             $currentNetWorth = $latestSavings ? $latestSavings->net_worth : 0;
 
-            // Step 5.1: Calculate new balance if `from_savings` is true
+            // Step 6.1: Calculate new balance if `from_savings` is true
             $newBalance = $currentBalance;
             if ($fromSavings) {
                 $newBalance -= $newRepaymentAmount;
@@ -79,7 +102,7 @@ class EditDebt extends EditRecord
                 }
             }
 
-            // Step 5.2: Create a new Saving record
+            // Step 6.2: Create a new Saving record
             Saving::create([
                 'user_id' => $record->user_id,
                 'credit_amount' => $fromSavings ? 0 : $newRepaymentAmount,  // Credit only when NOT from savings
@@ -88,7 +111,14 @@ class EditDebt extends EditRecord
                 'net_worth' => $currentNetWorth + $newRepaymentAmount,                           // Keep net worth unchanged
             ]);
 
-            // Step 7: Return the updated Debt record
+            // Step 7: Notify success
+            Notification::make()
+                ->success()
+                ->title('Repayment applied')
+                ->body(sprintf('Repayment of Kes %.2f applied for user #%d on account #%d', $newRepaymentAmount, $record->user_id, $record->account_id))
+                ->send();
+
+            // Step 8: Return the updated Debt record
             return $record;
         });
     }
