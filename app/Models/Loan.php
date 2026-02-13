@@ -61,7 +61,9 @@ class Loan extends Model
                                 ->prefix('Kes')
                                 ->maxLength(255)
                                 ->reactive()  // Make the input reactive
-                                ->afterStateUpdated(fn(callable $set, $state) => $set('balance', $state * 1.01)),  // Set balance as amount + 1% interest
+                                // Debounce to reduce Livewire round-trips and prevent dropped characters when typing fast
+                                ->debounce(700)
+                                ->afterStateUpdated(fn(callable $set, $state) => $set('balance', is_numeric($state) ? round((float)$state * 1.01, 2) : null)),  // Set balance as amount + 1% interest
                         ]),
                     Fieldset::make('Apply Interest')
                         ->schema([
