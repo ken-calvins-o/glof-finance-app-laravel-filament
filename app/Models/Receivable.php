@@ -10,13 +10,18 @@ use Filament\Forms\Components\Select;
 use Filament\Forms\Components\TextInput;
 use Filament\Forms\Components\ToggleButtons;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Support\Facades\DB;
+use App\Services\ReceivableEffectService;
 
 class Receivable extends Model
 {
+    use SoftDeletes; // enable soft deletes so we can safely revert on delete and support restore
+
     protected $casts = [
         'id' => 'integer',
         'user_id' => 'integer',
@@ -62,6 +67,11 @@ class Receivable extends Model
     public function debt(): HasOne
     {
         return $this->hasOne(Debt::class);
+    }
+
+    public function effects(): HasMany
+    {
+        return $this->hasMany(ReceivableEffect::class);
     }
 
     public static function getForm(): array
@@ -161,7 +171,7 @@ class Receivable extends Model
                                 ->grouped()
                                 ->reactive()
                                 ->columnSpanFull(),
-                        ]),
+                        ])
                 ])
                 ->columnSpanFull(),
         ];
@@ -184,5 +194,55 @@ class Receivable extends Model
             ->where('account_id', $accountId)
             ->where('user_id', $userId)
             ->value('amount'); // Fetch the amount field
+    }
+
+    /**
+     * Boot model events to capture effects and revert on delete/restore.
+     */
+    protected static function booted()
+    {
+        // After creating a receivable, record the system effects so we can revert later.
+        static::created(function (Receivable $receivable) {
+            // Delegates to service which inspects DB and saves an effect snapshot
+            try {
+                // Avoid double-recording: if an effect was already created (e.g. in CreateReceivable), skip
+                if (class_exists(\App\Models\ReceivableEffect::class)) {
+                    $exists = \App\Models\ReceivableEffect::where('receivable_id', $receivable->id)->exists();
+                    if ($exists) {
+                        return;
+                    }
+                }
+
+                (new ReceivableEffectService())->recordCreationEffects($receivable);
+            } catch (\Throwable $e) {
+                // Don't interrupt creation, but report to the error log for investigation
+                report($e);
+            }
+        });
+
+        // When deleting (soft-delete) a receivable, revert its effects atomically.
+        static::deleting(function (Receivable $receivable) {
+            // Only act on soft-deletes (not forceDelete)
+            if ($receivable->isForceDeleting()) {
+                return;
+            }
+
+            try {
+                (new ReceivableEffectService())->revertEffectsForReceivable($receivable);
+            } catch (\Throwable $e) {
+                report($e);
+                // throw to prevent deletion if revert fails
+                throw $e;
+            }
+        });
+
+        // On restore, replay the reversal (i.e., restore previous effects)
+        static::restored(function (Receivable $receivable) {
+            try {
+                (new ReceivableEffectService())->restoreEffectsForReceivable($receivable);
+            } catch (\Throwable $e) {
+                report($e);
+            }
+        });
     }
 }

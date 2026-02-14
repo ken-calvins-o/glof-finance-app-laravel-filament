@@ -104,6 +104,14 @@ class ReceivableResource extends Resource
                 NumberFilter::make('net_worth')->debounce(700)
             ])
             ->actions([
+                Tables\Actions\Action::make('safeDelete')
+                    ->label('Delete')
+                    ->icon('heroicon-o-trash')
+                    ->requiresConfirmation()
+                    ->action(function (Receivable $record, array $data): void {
+                        // Use the domain service to safely delete
+                        (new \App\Services\ReceivableService())->safeDelete($record, auth()->id());
+                    }),
             ])
             ->bulkActions([
                 Tables\Actions\BulkActionGroup::make([
