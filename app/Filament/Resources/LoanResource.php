@@ -4,6 +4,7 @@ namespace App\Filament\Resources;
 
 use App\Filament\Resources\LoanResource\Pages;
 use App\Models\Loan;
+use App\Enums\DebtStatusEnum;
 use Filament\Forms\Form;
 use Filament\Resources\Resource;
 use Filament\Tables;
@@ -104,7 +105,7 @@ class LoanResource extends Resource
                     ->preload(),
             ])
             ->actions([
-                Tables\Actions\EditAction::make(),
+                Tables\Actions\EditAction::make()->visible(fn($record) => $record->debt_status !== DebtStatusEnum::Cleared),
             ])
             ->bulkActions([
                 Tables\Actions\BulkActionGroup::make([
