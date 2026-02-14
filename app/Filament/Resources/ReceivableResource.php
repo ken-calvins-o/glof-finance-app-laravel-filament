@@ -104,7 +104,6 @@ class ReceivableResource extends Resource
                 NumberFilter::make('net_worth')->debounce(700)
             ])
             ->actions([
-                Tables\Actions\EditAction::make(),
             ])
             ->bulkActions([
                 Tables\Actions\BulkActionGroup::make([
@@ -115,7 +114,6 @@ class ReceivableResource extends Resource
                             ->askForFilename()
                             ->except('avatar'),
                     ]),
-                    Tables\Actions\DeleteBulkAction::make(),
                 ]),
             ]);
     }
