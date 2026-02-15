@@ -4,6 +4,7 @@ namespace App\Filament\Resources;
 
 use App\Filament\Resources\ReceivableResource\Pages;
 use App\Models\Receivable;
+use App\Services\ReceivableService;
 use Filament\Forms\Form;
 use Filament\Resources\Resource;
 use Filament\Tables;
@@ -110,7 +111,7 @@ class ReceivableResource extends Resource
                     ->requiresConfirmation()
                     ->action(function (Receivable $record, array $data): void {
                         // Use the domain service to safely delete
-                        (new \App\Services\ReceivableService())->safeDelete($record, auth()->id());
+                        (new ReceivableService())->safeDelete($record, auth()->id());
                     }),
             ])
             ->bulkActions([
