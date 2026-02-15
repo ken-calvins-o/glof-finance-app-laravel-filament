@@ -1,66 +1,167 @@
-<p align="center"><a href="https://laravel.com" target="_blank"><img src="https://raw.githubusercontent.com/laravel/art/master/logo-lockup/5%20SVG/2%20CMYK/1%20Full%20Color/laravel-logolockup-cmyk-red.svg" width="400" alt="Laravel Logo"></a></p>
+# Glof Finance (Laravel + Filament)
 
-<p align="center">
-<a href="https://github.com/laravel/framework/actions"><img src="https://github.com/laravel/framework/workflows/tests/badge.svg" alt="Build Status"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/dt/laravel/framework" alt="Total Downloads"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/v/laravel/framework" alt="Latest Stable Version"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/l/laravel/framework" alt="License"></a>
-</p>
+Glof Finance is a web-based finance management system built with **Laravel** and **Filament** (TALL stack). It’s designed for **member-based groups/SACCOs/chamas** to manage savings, collections, loans, payables, and reporting in a structured, auditable way—without relying on spreadsheets.
 
-## About Laravel
+> Currency: The app is primarily oriented around **Kenyan Shillings (KES)**.
 
-Laravel is a web application framework with expressive, elegant syntax. We believe development must be an enjoyable and creative experience to be truly fulfilling. Laravel taKes the pain out of development by easing common tasks used in many web projects, such as:
+---
 
-- [Simple, fast routing engine](https://laravel.com/docs/routing).
-- [Powerful dependency injection container](https://laravel.com/docs/container).
-- Multiple back-ends for [session](https://laravel.com/docs/session) and [cache](https://laravel.com/docs/cache) storage.
-- Expressive, intuitive [database ORM](https://laravel.com/docs/eloquent).
-- Database agnostic [schema migrations](https://laravel.com/docs/migrations).
-- [Robust background job processing](https://laravel.com/docs/queues).
-- [Real-time event broadcasting](https://laravel.com/docs/broadcasting).
+## Why this app exists (problem it solves)
 
-Laravel is accessible, powerful, and provides tools required for large, robust applications.
+Many groups run core financial operations in Excel/Google Sheets. That works early on, but often leads to:
+- inconsistent data entry (“M-PESA”, “Mpesa”, “MobileMoney”…),
+- broken formulas and manual reconciliation,
+- weak accountability (who changed what, and when?),
+- repetitive monthly tasks like interest application done manually.
 
-## Learning Laravel
+Glof Finance centralizes those workflows in a database-backed system with consistent forms, safer updates, and automation via the Laravel scheduler.
 
-Laravel has the most extensive and thorough [documentation](https://laravel.com/docs) and video tutorial library of all modern web application frameworks, making it a breeze to get started with the framework.
+---
 
-You may also try the [Laravel Bootcamp](https://bootcamp.laravel.com), where you will be guided through building a modern Laravel application from scratch.
+## Core modules / features
 
-If you don't feel like reading, [Laracasts](https://laracasts.com) can help. Laracasts contains thousands of video tutorials on a range of topics including Laravel, modern PHP, unit testing, and JavaScript. Boost your skills by digging into our comprehensive video library.
+### Members
+- Maintain a list of members (users)
+- Member-linked transactions for traceability
 
-## Laravel Sponsors
+### Savings / Contributions
+- Track member savings (credits, debits, balances, and net worth)
 
-We would like to extend our thanks to the following sponsors for funding Laravel development. If you are interested in becoming a sponsor, please visit the [Laravel Partners program](https://partners.laravel.com).
+### Collections (Receivables)
+- Record money received from members with structured entry forms
+- Payment modes supported (examples): Bank Transfer, Cash, Cheque, Mobile Money (M-PESA/Airtel), Card, Online gateway, etc.
 
-### Premium Partners
+### Loans
+- Issue loans to members and track amounts, balances, and due dates
+- Loan creation workflow supports consistent related updates (e.g. balance/interest handling)
 
-- **[Vehikl](https://vehikl.com/)**
-- **[Tighten Co.](https://tighten.co)**
-- **[WebReinvent](https://webreinvent.com/)**
-- **[Kirschbaum Development Group](https://kirschbaumdevelopment.com)**
-- **[64 Robots](https://64robots.com)**
-- **[Curotec](https://www.curotec.com/services/technologies/laravel/)**
-- **[Cyber-Duck](https://cyber-duck.co.uk)**
-- **[DevSquad](https://devsquad.com/hire-laravel-developers)**
-- **[Jump24](https://jump24.co.uk)**
-- **[Redberry](https://redberry.international/laravel/)**
-- **[Active Logic](https://activelogic.com)**
-- **[byte5](https://byte5.de)**
-- **[OP.GG](https://op.gg)**
+### Income (including interest)
+- Record income entries including interest income for reporting visibility
+
+### Payables
+- Record outgoing payments / debits and group expenses
+- Supports more complex payout/allocation scenarios
+
+### Reporting (PDF)
+- Generate group statements as PDF for meetings, sharing, and record keeping
+
+---
+
+## Scheduler: Monthly interest on debts
+
+The app includes a scheduled task that applies **monthly interest** to outstanding debts.
+
+- Console command: `app:apply-monthly-interest`
+- Default behavior: **1% monthly** interest (as implemented in the domain service)
+- Schedule: runs on the **1st day of every month at 00:00** (app timezone)
+
+The scheduler includes:
+- `withoutOverlapping()` at schedule level
+- a cache lock keyed to the current interest period to reduce double-processing risk
+
+### Run it manually
+```bash
+php artisan app:apply-monthly-interest
+```
+
+### Enable in production (Laravel scheduler)
+Add this cron entry on your server (runs every minute and triggers scheduled tasks when due):
+
+```bash
+* * * * * cd /path/to/glof-finance-app-laravel-filament && php artisan schedule:run >> /dev/null 2>&1
+```
+
+To view scheduled tasks:
+
+```bash
+php artisan schedule:list
+```
+
+---
+
+## Tech stack
+- **Laravel** (backend framework)
+- **Filament** (admin panel / resources)
+- **Livewire** (reactive server-driven UI)
+- **Alpine.js + Tailwind CSS** (TALL stack UI layer)
+- **Vite** (frontend build pipeline)
+
+---
+
+## Getting started (local development)
+
+### 1) Clone and install dependencies
+```bash
+git clone https://github.com/ken-calvins-o/glof-finance-app-laravel-filament.git
+cd glof-finance-app-laravel-filament
+
+composer install
+npm install
+```
+
+### 2) Configure environment
+```bash
+cp .env.example .env
+php artisan key:generate
+```
+
+Set your database credentials in `.env`.
+
+### 3) Run migrations (and seed if your repo includes seeders)
+```bash
+php artisan migrate
+# optional:
+# php artisan db:seed
+```
+
+### 4) Build assets and run the app
+```bash
+npm run dev
+php artisan serve
+```
+
+---
+
+## Using the admin panel (Filament)
+
+Once the app is running, access the Filament dashboard (commonly):
+- `/admin`
+
+Create an admin user (choose one approach that matches your project):
+- via registration (if enabled), or
+- via tinker / seeder / custom artisan command (if present).
+
+---
+
+## Notes on data integrity
+
+Financial systems are sensitive. This app uses:
+- validated form inputs
+- database transactions in critical flows
+- structured enums for certain fields (e.g. payment modes)
+
+If you plan to deploy to multiple SACCOs or larger datasets, consider adding:
+- approvals (maker-checker)
+- period closing/locking
+- audit logging (who changed what)
+- multi-tenancy (tenant isolation)
+
+---
+
+## Roadmap ideas (optional enhancements)
+- Member statements (per member, per date range)
+- Arrears tracking and notifications
+- Import tools (CSV/Excel onboarding)
+- Audit logs (activity history per record)
+- M-PESA / bank integrations
+- Robust idempotency markers for interest runs (persisted “run ledger”)
+
+---
 
 ## Contributing
+Contributions are welcome. Please open an issue describing the change and the motivation, then submit a PR.
 
-Thank you for considering contributing to the Laravel framework! The contribution guide can be found in the [Laravel documentation](https://laravel.com/docs/contributions).
-
-## Code of Conduct
-
-In order to ensure that the Laravel community is welcoming to all, please review and abide by the [Code of Conduct](https://laravel.com/docs/contributions#code-of-conduct).
-
-## Security Vulnerabilities
-
-If you discover a security vulnerability within Laravel, please send an e-mail to Taylor Otwell via [taylor@laravel.com](mailto:taylor@laravel.com). All security vulnerabilities will be promptly addressed.
+---
 
 ## License
-
-The Laravel framework is open-sourced software licensed under the [MIT license](https://opensource.org/licenses/MIT).
+Add your chosen license here (MIT/Proprietary/etc.).
