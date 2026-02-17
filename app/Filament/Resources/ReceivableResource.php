@@ -116,6 +116,7 @@ class ReceivableResource extends Resource
             ])
             ->bulkActions([
                 Tables\Actions\BulkActionGroup::make([
+                    Tables\Actions\DeleteBulkAction::make(),
                     ExportBulkAction::make()->exports([
                         ExcelExport::make()
                             ->withFilename(date('Y-m-d') . ' - Statements')
