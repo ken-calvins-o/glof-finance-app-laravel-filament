@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Services\SavingsCalculator;
 use Filament\Forms\Components\Section;
 use Filament\Forms\Components\Select;
 use Filament\Forms\Components\TextInput;
@@ -34,27 +35,21 @@ class Saving extends Model
                         ->reactive()
                         ->afterStateUpdated(function (callable $get, callable $set) {
                             $userId = $get('user_id');
+                            $calculator = app(SavingsCalculator::class);
 
                             if ($userId) {
-                                // Fetch the current net worth dynamically once when user changes
-                                $currentNetWorth = Saving::where('user_id', $userId)
-                                    ->latest('id')
-                                    ->value('net_worth') ?? 0;
-
-                                // Set the current net worth
-                                $set('current_net_worth', $currentNetWorth);
-
-                                // Recalculate dependent fields
                                 $creditAmount = floatval($get('credit_amount') ?? 0);
+                                $defaults = $calculator->getFormDefaults($userId, $creditAmount);
 
-                                // Prevent excessive updates
-                                $set('net_worth', $currentNetWorth + $creditAmount);
-                                $set('balance', $creditAmount); // balance mirrors credit_amount
+                                foreach ($defaults as $field => $value) {
+                                    $set($field, $value);
+                                }
                             } else {
-                                // Reset fields if no member is selected
-                                $set('current_net_worth', 0);
-                                $set('net_worth', 0);
-                                $set('balance', 0);
+                                $resetValues = $calculator->getResetValues();
+
+                                foreach ($resetValues as $field => $value) {
+                                    $set($field, $value);
+                                }
                             }
                         }),
 
@@ -67,37 +62,46 @@ class Saving extends Model
                         ->hintIcon('heroicon-o-currency-dollar')
                         ->prefix('Kes')
                         ->reactive()
-                        ->debounce(700) // increase debounce to reduce mid-typing server updates and lost keystrokes
+                        ->debounce(700)
                         ->afterStateUpdated(function (callable $get, callable $set) {
-                            // Efficiently update dependent fields when credit amount changes
-                            $creditAmount = floatval($get('credit_amount') ?? 0);
-                            $currentNetWorth = $get('current_net_worth') ?? 0;
+                            $userId = $get('user_id');
 
-                            // Prevent excessive updates on every keystroke
-                            $set('net_worth', $currentNetWorth + $creditAmount);
-                            $set('balance', $creditAmount); // balance mirrors credit_amount
+                            if ($userId) {
+                                $calculator = app(SavingsCalculator::class);
+                                $creditAmount = floatval($get('credit_amount') ?? 0);
+                                $defaults = $calculator->getFormDefaults($userId, $creditAmount);
+
+                                foreach ($defaults as $field => $value) {
+                                    $set($field, $value);
+                                }
+                            }
                         }),
 
                     // Read-Only New Net Worth Field
                     TextInput::make('net_worth')
                         ->label('Expected New Net Worth')
                         ->prefix('Kes')
-                        ->readOnly() // Use readOnly instead of disabled (to allow styling)
-                        ->default(0) // Default value if no calculations
-                        ->reactive(), // Ensure it updates dynamically when inputs change
+                        ->readOnly()
+                        ->default(0)
+                        ->reactive(),
 
                     // Read-Only Balance Field
                     TextInput::make('balance')
                         ->label('Estimated Savings')
                         ->prefix('Kes')
-                        ->readOnly() // Prevent manual editing of balance
-                        ->default(0) // Default value initially
-                        ->reactive(), // Dynamically updates alongside credit_amount
+                        ->readOnly()
+                        ->default(0)
+                        ->reactive(),
 
                     // Hidden Field to Track Current Net Worth
                     TextInput::make('current_net_worth')
-                        ->hidden() // Keep it hidden from user input
-                        ->default(0), // Default value
+                        ->hidden()
+                        ->default(0),
+
+                    // Hidden Field to Track Current Balance
+                    TextInput::make('current_balance')
+                        ->hidden()
+                        ->default(0),
                 ]),
         ];
     }

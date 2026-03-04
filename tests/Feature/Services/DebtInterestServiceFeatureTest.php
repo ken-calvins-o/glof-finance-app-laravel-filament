@@ -2,9 +2,10 @@
 
 namespace Tests\Feature\Services;
 
-use App\Models\Debt;
-use App\Models\User;
 use App\Models\Account;
+use App\Models\Debt;
+use App\Models\Income;
+use App\Models\User;
 use App\Services\DebtInterestService;
 use Tests\TestCase;
 
@@ -32,8 +33,8 @@ class DebtInterestServiceFeatureTest extends TestCase
      */
     public function test_applies_one_percent_interest_correctly_with_database(): void
     {
-        $user = User::first();
-        $account = Account::first();
+        $user = User::factory()->create();
+        $account = Account::factory()->create();
 
         $debt = Debt::factory()->create([
             'user_id' => $user->id,
@@ -58,8 +59,8 @@ class DebtInterestServiceFeatureTest extends TestCase
      */
     public function test_skips_debts_with_zero_or_negative_balance(): void
     {
-        $user = User::first();
-        $account = Account::first();
+        $user = User::factory()->create();
+        $account = Account::factory()->create();
 
         Debt::factory()->create([
             'user_id' => $user->id,
@@ -84,16 +85,9 @@ class DebtInterestServiceFeatureTest extends TestCase
      */
     public function test_processes_multiple_debts(): void
     {
-        $users = User::limit(2)->get();
-        $account = Account::first();
-
-        if ($users->count() < 2) {
-            $this->markTestSkipped('At least 2 users required in database for this test');
-            return;
-        }
-
-        $user1 = $users[0];
-        $user2 = $users[1];
+        $account = Account::factory()->create();
+        $user1 = User::factory()->create();
+        $user2 = User::factory()->create();
 
         $debt1 = Debt::factory()->create([
             'user_id' => $user1->id,
@@ -129,8 +123,8 @@ class DebtInterestServiceFeatureTest extends TestCase
      */
     public function test_applies_custom_interest_rate(): void
     {
-        $user = User::first();
-        $account = Account::first();
+        $user = User::factory()->create();
+        $account = Account::factory()->create();
 
         Debt::factory()->create([
             'user_id' => $user->id,
@@ -150,8 +144,8 @@ class DebtInterestServiceFeatureTest extends TestCase
      */
     public function test_maintains_decimal_precision(): void
     {
-        $user = User::first();
-        $account = Account::first();
+        $user = User::factory()->create();
+        $account = Account::factory()->create();
 
         Debt::factory()->create([
             'user_id' => $user->id,
@@ -168,5 +162,38 @@ class DebtInterestServiceFeatureTest extends TestCase
 
         $this->assertEquals(3.33, $stats['total_interest']);
     }
-}
 
+    /**
+     * Test recording interest as income
+     */
+    public function test_records_interest_as_income_when_interest_is_applied(): void
+    {
+        $user = User::factory()->create();
+        $account = Account::factory()->create();
+
+        $debt = Debt::factory()->create([
+            'user_id' => $user->id,
+            'account_id' => $account?->id,
+            'outstanding_balance' => 1000.00,
+        ]);
+
+        $stats = $this->service->applyMonthlyInterest();
+
+        $this->assertEquals(1, $stats['processed']);
+        $this->assertEquals(0, $stats['errors']);
+        $this->assertEquals(10.00, $stats['total_interest']);
+
+        $this->assertDatabaseHas('incomes', [
+            'user_id' => $user->id,
+            'account_id' => $account?->id,
+            'origin' => 'Monthly Debt Interest',
+            'interest_amount' => 10.00,
+        ]);
+
+        // sanity: debt was actually updated
+        $this->assertDatabaseHas('debts', [
+            'id' => $debt->id,
+            'outstanding_balance' => 1010.00,
+        ]);
+    }
+}

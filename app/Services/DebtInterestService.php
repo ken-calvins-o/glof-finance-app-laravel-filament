@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Models\Debt;
+use App\Models\Income;
 use App\Models\Saving;
 use App\Models\AccountCollection;
 use Illuminate\Support\Facades\Cache;
@@ -71,6 +72,11 @@ class DebtInterestService
                         $this->recordInterestInSavings($debt->user_id, $interest, $netWorthByUser);
                         $this->updateAccountCollectionAmount($debt->user_id, $debt->account_id, $interest, $accountAmountByKey);
 
+                        // Record interest in Income model if interest amount is greater than 0
+                        if ($interest > 0) {
+                            $this->recordInterestAsIncome($debt->user_id, $debt->account_id, $interest);
+                        }
+
                         $stats['processed']++;
                         $stats['total_interest'] += $interest;
                     } catch (\Exception $e) {
@@ -108,16 +114,15 @@ class DebtInterestService
     /**
      * Retrieve all debts with outstanding balance greater than zero.
      *
+     * Note: This currently does NOT filter by `last_interest_applied_on` so that
+     * running the command always processes any outstanding debt.
+     *
      * @param string $periodDate
      * @return \Illuminate\Database\Eloquent\Collection
      */
     private function getDebtsWithOutstandingBalance(string $periodDate)
     {
         return Debt::where('outstanding_balance', '>', 0)
-            ->where(function ($query) use ($periodDate) {
-                $query->whereNull('last_interest_applied_on')
-                    ->orWhere('last_interest_applied_on', '<', $periodDate);
-            })
             ->lockForUpdate()
             ->with(['user', 'account'])
             ->get();
@@ -262,6 +267,48 @@ class DebtInterestService
     public function getInterestRate(): float
     {
         return $this->interestRate;
+    }
+
+    /**
+     * Record interest as income for the user.
+     *
+     * @param int $userId
+     * @param int|null $accountId
+     * @param float $interest
+     * @return void
+     */
+    private function recordInterestAsIncome(int $userId, ?int $accountId, float $interest): void
+    {
+        try {
+            Income::create([
+                'user_id' => $userId,
+                'account_id' => $accountId,
+                'interest_amount' => $interest,
+                'source' => null,
+                'origin' => 'Monthly Debt Interest',
+                'description' => 'Monthly interest from outstanding debt (' . ($this->interestRate * 100) . '%)',
+            ]);
+
+            Log::info(
+                'Interest recorded in Income model',
+                [
+                    'user_id' => $userId,
+                    'account_id' => $accountId,
+                    'interest_amount' => $interest,
+                ]
+            );
+        } catch (\Exception $e) {
+            Log::error(
+                'Failed to record interest in Income model',
+                [
+                    'user_id' => $userId,
+                    'account_id' => $accountId,
+                    'interest_amount' => $interest,
+                    'error' => $e->getMessage(),
+                    'trace' => $e->getTraceAsString(),
+                ]
+            );
+        }
     }
 
     /**
