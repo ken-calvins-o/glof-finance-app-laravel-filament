@@ -5,12 +5,11 @@ namespace Tests\Feature;
 use App\Models\User;
 use App\Models\Account;
 use App\Models\AccountCollection;
-use App\Models\Payable;
 use App\Models\Income;
-use App\Models\Debt;
 use App\Models\Saving;
 use App\Models\Month;
 use App\Models\Year;
+use App\Services\PayableCreationService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
@@ -19,17 +18,17 @@ class PayableInterestIncomeTest extends TestCase
     use RefreshDatabase;
 
     /**
-     * Test that interest is recorded as income when a user incurs debt from payable.
+     * Test that no payable-interest income is recorded, and debt is principal shortfall only.
      *
      * @return void
      */
-    public function test_interest_is_recorded_as_income_when_debt_is_incurred()
+    public function test_debt_is_created_without_interest_when_user_incurrs_shortfall()
     {
-        // Arrange: Create test data
+        // Arrange
         $user = User::factory()->create();
         $account = Account::factory()->create();
-        $month = Month::factory()->create();
-        $year = Year::factory()->create();
+        $month = Month::create(['name' => 'January']);
+        $year = Year::create(['year' => 2026]);
 
         // Set account collection to 500 (less than payable amount)
         AccountCollection::create([
@@ -48,13 +47,12 @@ class PayableInterestIncomeTest extends TestCase
         ]);
 
         // Payable amount is 1000, user has 500, shortfall is 500
-        // Interest should be 500 * 0.01 = 5
         $payableAmount = 1000;
+        $initialIncomeCount = Income::count();
 
-        // Act: Create payable (this should trigger the interest income recording)
-        $response = $this->actingAs($user)->post(route('filament.admin.resources.payables.create'), [
+        // Act
+        app(PayableCreationService::class)->create([
             'account_id' => $account->id,
-            'user_id' => $user->id,
             'total_amount' => $payableAmount,
             'is_general' => false,
             'from_savings' => false,
@@ -69,21 +67,19 @@ class PayableInterestIncomeTest extends TestCase
             ],
         ]);
 
-        // Assert: Verify income record was created
-        $this->assertDatabaseHas('incomes', [
+        // Assert: no new income record created for payable interest
+        $this->assertEquals($initialIncomeCount, Income::count());
+        $this->assertDatabaseMissing('incomes', [
             'user_id' => $user->id,
             'account_id' => $account->id,
             'origin' => 'Payable Interest',
-            'interest_amount' => 5.00,
-            'income_amount' => 0,
         ]);
 
-        // Assert: Verify debt was created with correct outstanding balance
-        // Outstanding balance = (1000 + 5) - 500 = 505
+        // Assert: debt is principal shortfall only (1000 - 500 = 500)
         $this->assertDatabaseHas('debts', [
             'user_id' => $user->id,
             'account_id' => $account->id,
-            'outstanding_balance' => 505.00,
+            'outstanding_balance' => 500.00,
         ]);
     }
 
@@ -94,11 +90,11 @@ class PayableInterestIncomeTest extends TestCase
      */
     public function test_no_income_record_when_no_debt_incurred()
     {
-        // Arrange: Create test data
+        // Arrange
         $user = User::factory()->create();
         $account = Account::factory()->create();
-        $month = Month::factory()->create();
-        $year = Year::factory()->create();
+        $month = Month::create(['name' => 'January']);
+        $year = Year::create(['year' => 2026]);
 
         // Set account collection to 2000 (more than payable amount)
         AccountCollection::create([
@@ -119,10 +115,9 @@ class PayableInterestIncomeTest extends TestCase
         $payableAmount = 1000;
         $initialIncomeCount = Income::count();
 
-        // Act: Create payable (no debt should be incurred)
-        $response = $this->actingAs($user)->post(route('filament.admin.resources.payables.create'), [
+        // Act
+        app(PayableCreationService::class)->create([
             'account_id' => $account->id,
-            'user_id' => $user->id,
             'total_amount' => $payableAmount,
             'is_general' => false,
             'from_savings' => false,
@@ -148,26 +143,28 @@ class PayableInterestIncomeTest extends TestCase
     }
 
     /**
-     * Test interest calculation with various shortfall amounts.
+     * Test shortfall calculation without interest across various scenarios.
      *
      * @return void
      */
-    public function test_interest_calculation_with_various_amounts()
+    public function test_shortfall_to_debt_calculation_with_various_amounts()
     {
         $testCases = [
-            ['available' => 0, 'payable' => 1000, 'expected_interest' => 10.00],
-            ['available' => 250, 'payable' => 1000, 'expected_interest' => 7.50],
-            ['available' => 500, 'payable' => 1000, 'expected_interest' => 5.00],
-            ['available' => 900, 'payable' => 1000, 'expected_interest' => 1.00],
-            ['available' => 999, 'payable' => 1000, 'expected_interest' => 0.01],
+            ['available' => 0, 'payable' => 1000, 'expected_debt' => 1000.00],
+            ['available' => 250, 'payable' => 1000, 'expected_debt' => 750.00],
+            ['available' => 500, 'payable' => 1000, 'expected_debt' => 500.00],
+            ['available' => 900, 'payable' => 1000, 'expected_debt' => 100.00],
+            ['available' => 999, 'payable' => 1000, 'expected_debt' => 1.00],
+            ['available' => 1000, 'payable' => 1000, 'expected_debt' => 0.00],
+            ['available' => 1500, 'payable' => 1000, 'expected_debt' => 0.00],
         ];
 
         foreach ($testCases as $index => $case) {
             // Arrange
             $user = User::factory()->create(['name' => "Test User {$index}"]);
             $account = Account::factory()->create(['name' => "Test Account {$index}"]);
-            $month = Month::factory()->create();
-            $year = Year::factory()->create();
+            $month = Month::create(['name' => 'January']);
+            $year = Year::create(['year' => 2026]);
 
             AccountCollection::create([
                 'user_id' => $user->id,
@@ -180,13 +177,14 @@ class PayableInterestIncomeTest extends TestCase
                 'credit_amount' => 0,
                 'debit_amount' => 0,
                 'balance' => 0,
-                'net_worth' => 1000,
+                'net_worth' => 2000,
             ]);
 
+            $initialIncomeCount = Income::count();
+
             // Act
-            $response = $this->actingAs($user)->post(route('filament.admin.resources.payables.create'), [
+            app(PayableCreationService::class)->create([
                 'account_id' => $account->id,
-                'user_id' => $user->id,
                 'total_amount' => $case['payable'],
                 'is_general' => false,
                 'from_savings' => false,
@@ -201,18 +199,21 @@ class PayableInterestIncomeTest extends TestCase
                 ],
             ]);
 
-            // Assert
-            $income = Income::where('user_id', $user->id)
-                ->where('account_id', $account->id)
-                ->where('origin', 'Payable Interest')
-                ->first();
+            // Assert: no payable interest income created
+            $this->assertEquals($initialIncomeCount, Income::count(), "No income should be created for test case {$index}");
 
-            $this->assertNotNull($income, "Income record should exist for test case {$index}");
-            $this->assertEquals(
-                $case['expected_interest'],
-                (float) $income->interest_amount,
-                "Interest amount should be {$case['expected_interest']} for test case {$index}"
-            );
+            if ($case['expected_debt'] > 0) {
+                $this->assertDatabaseHas('debts', [
+                    'user_id' => $user->id,
+                    'account_id' => $account->id,
+                    'outstanding_balance' => $case['expected_debt'],
+                ]);
+            } else {
+                $this->assertDatabaseMissing('debts', [
+                    'user_id' => $user->id,
+                    'account_id' => $account->id,
+                ]);
+            }
         }
     }
 }
