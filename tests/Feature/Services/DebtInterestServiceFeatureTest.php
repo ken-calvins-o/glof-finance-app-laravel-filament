@@ -196,4 +196,42 @@ class DebtInterestServiceFeatureTest extends TestCase
             'outstanding_balance' => 1010.00,
         ]);
     }
+
+    /**
+     * Test applying monthly interest to selected debt IDs only affects those debts and leaves others unchanged
+     */
+    public function test_applies_monthly_interest_to_selected_debt_ids_only(): void
+    {
+        $account = Account::factory()->create();
+        $user = User::factory()->create();
+
+        $targetDebt = Debt::factory()->create([
+            'user_id' => $user->id,
+            'account_id' => $account->id,
+            'outstanding_balance' => 1000.00,
+        ]);
+
+        $otherDebt = Debt::factory()->create([
+            'user_id' => $user->id,
+            'account_id' => $account->id,
+            'outstanding_balance' => 2000.00,
+        ]);
+
+        $stats = $this->service->applyMonthlyInterestToDebtIds([$targetDebt->id]);
+
+        $this->assertEquals(1, $stats['processed']);
+        $this->assertEquals(0, $stats['errors']);
+        $this->assertEquals(10.00, $stats['total_interest']);
+
+        $this->assertDatabaseHas('debts', [
+            'id' => $targetDebt->id,
+            'outstanding_balance' => 1010.00,
+        ]);
+
+        // Ensure non-selected debt is unchanged.
+        $this->assertDatabaseHas('debts', [
+            'id' => $otherDebt->id,
+            'outstanding_balance' => 2000.00,
+        ]);
+    }
 }

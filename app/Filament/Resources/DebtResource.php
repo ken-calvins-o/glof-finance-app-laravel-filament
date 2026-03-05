@@ -5,10 +5,11 @@ namespace App\Filament\Resources;
 use App\Enums\DebtStatusEnum;
 use App\Enums\PaymentMode;
 use App\Filament\Resources\DebtResource\Pages;
-use App\Filament\Resources\DebtResource\RelationManagers;
 use App\Models\Debt;
+use App\Services\DebtInterestService;
 use Filament\Forms;
 use Filament\Forms\Form;
+use Filament\Notifications\Notification;
 use Filament\Resources\Resource;
 use Filament\Tables;
 use Filament\Tables\Table;
@@ -98,6 +99,28 @@ class DebtResource extends Resource
             ])
             ->bulkActions([
                 Tables\Actions\BulkActionGroup::make([
+                    Tables\Actions\BulkAction::make('apply_monthly_interest')
+                        ->label('Apply Monthly Interest')
+                        ->icon('heroicon-o-percent-badge')
+                        ->color('warning')
+                        ->requiresConfirmation()
+                        ->modalHeading('Apply monthly interest to selected debts?')
+                        ->modalDescription('This will apply the configured monthly interest (default 1%) only to the selected debts that have an outstanding balance.')
+                        ->action(function ($records) {
+                            $ids = $records->pluck('id');
+
+                            $stats = app(DebtInterestService::class)
+                                ->applyMonthlyInterestToDebtIds($ids);
+
+                            Notification::make()
+                                ->title('Monthly interest applied')
+                                ->body(
+                                    "Processed: {$stats['processed']} | Errors: {$stats['errors']} | Total interest: Kes " . number_format($stats['total_interest'], 2)
+                                )
+                                ->success()
+                                ->send();
+                        })
+                        ->deselectRecordsAfterCompletion(),
                     Tables\Actions\DeleteBulkAction::make(),
                     ExportBulkAction::make(),
                 ]),

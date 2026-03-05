@@ -6,6 +6,7 @@ use App\Models\Debt;
 use App\Models\Income;
 use App\Models\Saving;
 use App\Models\AccountCollection;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -41,6 +42,51 @@ class DebtInterestService
      */
     public function applyMonthlyInterest(): array
     {
+        return $this->applyMonthlyInterestToQuery($this->baseOutstandingDebtQuery());
+    }
+
+    /**
+     * Apply monthly interest to a specific set of debt IDs.
+     *
+     * @param iterable<int|string> $debtIds
+     * @return array{processed: int, errors: int, total_interest: float}
+     */
+    public function applyMonthlyInterestToDebtIds(iterable $debtIds): array
+    {
+        $ids = collect($debtIds)
+            ->filter(fn ($id) => $id !== null && $id !== '')
+            ->map(fn ($id) => (int) $id)
+            ->unique()
+            ->values();
+
+        if ($ids->isEmpty()) {
+            return [
+                'processed' => 0,
+                'errors' => 0,
+                'total_interest' => 0.0,
+            ];
+        }
+
+        return $this->applyMonthlyInterestToQuery(
+            $this->baseOutstandingDebtQuery()->whereKey($ids)
+        );
+    }
+
+    /**
+     * Build the base query used when applying interest.
+     */
+    private function baseOutstandingDebtQuery(): Builder
+    {
+        return Debt::query()->where('outstanding_balance', '>', 0);
+    }
+
+    /**
+     * Core implementation for applying monthly interest to a given debt query.
+     *
+     * @return array{processed: int, errors: int, total_interest: float}
+     */
+    private function applyMonthlyInterestToQuery(Builder $query): array
+    {
         $stats = [
             'processed' => 0,
             'errors' => 0,
@@ -60,8 +106,8 @@ class DebtInterestService
         }
 
         try {
-            DB::transaction(function () use (&$stats, $periodDate) {
-                $debts = $this->getDebtsWithOutstandingBalance($periodDate);
+            DB::transaction(function () use (&$stats, $periodDate, $query) {
+                $debts = $this->getDebtsForInterestQuery($query, $periodDate);
                 $netWorthByUser = [];
                 $accountAmountByKey = [];
 
@@ -81,28 +127,22 @@ class DebtInterestService
                         $stats['total_interest'] += $interest;
                     } catch (\Exception $e) {
                         $stats['errors']++;
-                        Log::error(
-                            'Failed to apply interest to debt',
-                            [
-                                'debt_id' => $debt->id,
-                                'user_id' => $debt->user_id,
-                                'account_id' => $debt->account_id,
-                                'error' => $e->getMessage(),
-                            ]
-                        );
+                        Log::error('Failed to apply interest to debt', [
+                            'debt_id' => $debt->id,
+                            'user_id' => $debt->user_id,
+                            'account_id' => $debt->account_id,
+                            'error' => $e->getMessage(),
+                        ]);
                     }
                 }
             });
 
             $this->logSummary($stats);
         } catch (\Exception $e) {
-            Log::critical(
-                'Critical error in monthly interest application',
-                [
-                    'error' => $e->getMessage(),
-                    'exception' => $e,
-                ]
-            );
+            Log::critical('Critical error in monthly interest application', [
+                'error' => $e->getMessage(),
+                'exception' => $e,
+            ]);
             throw $e;
         } finally {
             $lock->release();
@@ -112,17 +152,14 @@ class DebtInterestService
     }
 
     /**
-     * Retrieve all debts with outstanding balance greater than zero.
+     * Retrieve debts eligible for interest from a provided query.
      *
      * Note: This currently does NOT filter by `last_interest_applied_on` so that
      * running the command always processes any outstanding debt.
-     *
-     * @param string $periodDate
-     * @return \Illuminate\Database\Eloquent\Collection
      */
-    private function getDebtsWithOutstandingBalance(string $periodDate)
+    private function getDebtsForInterestQuery(Builder $query, string $periodDate)
     {
-        return Debt::where('outstanding_balance', '>', 0)
+        return $query
             ->lockForUpdate()
             ->with(['user', 'account'])
             ->get();
