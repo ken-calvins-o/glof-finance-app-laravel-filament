@@ -70,7 +70,7 @@ class Loan extends Model
                             ToggleButtons::make('apply_interest')
                                 ->label('Do you want to apply interest?')
                                 ->boolean()
-                                ->default(true)
+                                ->default(false)
                                 ->inline()
                                 ->grouped()
                                 ->reactive()

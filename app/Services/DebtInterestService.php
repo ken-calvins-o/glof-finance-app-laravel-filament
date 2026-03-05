@@ -114,14 +114,17 @@ class DebtInterestService
                 foreach ($debts as $debt) {
                     try {
                         $interest = $this->calculateInterest($debt);
+
+                        // If interest rounds to zero, treat as a no-op.
+                        if ($interest <= 0) {
+                            continue;
+                        }
+
                         $this->updateDebtBalance($debt, $interest, $periodDate);
                         $this->recordInterestInSavings($debt->user_id, $interest, $netWorthByUser);
                         $this->updateAccountCollectionAmount($debt->user_id, $debt->account_id, $interest, $accountAmountByKey);
 
-                        // Record interest in Income model if interest amount is greater than 0
-                        if ($interest > 0) {
-                            $this->recordInterestAsIncome($debt->user_id, $debt->account_id, $interest);
-                        }
+                        $this->recordInterestAsIncome($debt->user_id, $debt->account_id, $interest);
 
                         $stats['processed']++;
                         $stats['total_interest'] += $interest;
@@ -215,24 +218,41 @@ class DebtInterestService
     /**
      * Record interest as a debit in the user's savings and update net worth.
      *
-     * @param int $userId
-     * @param float $interest
-     * @param array<int, float> $netWorthByUser
-     * @return void
+     * Rule: new_net_worth = current_net_worth - interest
+     * We store `interest` as `debit_amount`.
+     *
+     * IMPORTANT: Savings `balance` must not be modified by this operation.
+     * We carry forward the latest known balance value.
      */
     private function recordInterestInSavings(int $userId, float $interest, array &$netWorthByUser): void
     {
-        if (!array_key_exists($userId, $netWorthByUser)) {
-            $netWorthByUser[$userId] = $this->getCurrentNetWorth($userId);
+        if ($interest <= 0) {
+            return;
         }
 
-        $newNetWorth = round($netWorthByUser[$userId] - $interest, 2);
+        // Lock latest row so net worth/balance snapshot is consistent within this transaction.
+        $latestSaving = Saving::where('user_id', $userId)
+            ->latest('id')
+            ->lockForUpdate()
+            ->first();
+
+        $currentBalance = $latestSaving ? (float) $latestSaving->balance : 0.00;
+        $currentNetWorth = $latestSaving ? (float) $latestSaving->net_worth : 0.00;
+
+        // Cache per-user net worth within this run (saves re-fetching for multiple debts per user).
+        if (!array_key_exists($userId, $netWorthByUser)) {
+            $netWorthByUser[$userId] = $currentNetWorth;
+        } else {
+            $currentNetWorth = $netWorthByUser[$userId];
+        }
+
+        $newNetWorth = round($currentNetWorth - $interest, 2);
 
         Saving::create([
             'user_id' => $userId,
             'credit_amount' => 0.00,
             'debit_amount' => $interest,
-            'balance' => 0.00,
+            'balance' => $currentBalance,
             'net_worth' => $newNetWorth,
         ]);
 

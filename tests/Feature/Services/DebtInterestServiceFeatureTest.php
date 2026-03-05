@@ -5,6 +5,7 @@ namespace Tests\Feature\Services;
 use App\Models\Account;
 use App\Models\Debt;
 use App\Models\Income;
+use App\Models\Saving;
 use App\Models\User;
 use App\Services\DebtInterestService;
 use Tests\TestCase;
@@ -232,6 +233,44 @@ class DebtInterestServiceFeatureTest extends TestCase
         $this->assertDatabaseHas('debts', [
             'id' => $otherDebt->id,
             'outstanding_balance' => 2000.00,
+        ]);
+    }
+
+    /**
+     * Test that the interest job does not set Savings.balance to 0 (or otherwise touch it) when recording the savings entry
+     */
+    public function test_does_not_touch_savings_balance_when_recording_interest(): void
+    {
+        $user = User::factory()->create();
+        $account = Account::factory()->create();
+
+        // Seed an existing savings row with a non-zero balance.
+        Saving::create([
+            'user_id' => $user->id,
+            'credit_amount' => 0.00,
+            'debit_amount' => 0.00,
+            'balance' => 1234.56,
+            'net_worth' => 1234.56,
+        ]);
+
+        Debt::factory()->create([
+            'user_id' => $user->id,
+            'account_id' => $account->id,
+            'outstanding_balance' => 1000.00,
+        ]);
+
+        $this->service->applyMonthlyInterest();
+
+        // The original savings balance must remain unchanged.
+        $this->assertDatabaseHas('savings', [
+            'user_id' => $user->id,
+            'balance' => 1234.56,
+        ]);
+
+        // And the interest row should exist without forcing balance to 0.
+        $this->assertDatabaseHas('savings', [
+            'user_id' => $user->id,
+            'debit_amount' => 10.00,
         ]);
     }
 }

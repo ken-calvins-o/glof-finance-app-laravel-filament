@@ -15,7 +15,6 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Database\Eloquent\Relations\HasMany;
-use Illuminate\Support\Facades\DB;
 use App\Services\ReceivableEffectService;
 
 class Receivable extends Model
@@ -76,6 +75,25 @@ class Receivable extends Model
 
     public static function getForm(): array
     {
+        $updateContributionHint = function (callable $get, callable $set): void {
+            $accountId = $get('account_id');
+            $userId = $get('user_id');
+
+            if (! $accountId || ! $userId) {
+                $set('contributed_amount_hint', null);
+                return;
+            }
+
+            $amount = AccountCollection::query()
+                ->where('account_id', (int) $accountId)
+                ->where('user_id', (int) $userId)
+                ->value('amount');
+
+            $amount = $amount !== null ? (float) $amount : 0.0;
+
+            $set('contributed_amount_hint', 'Kes ' . number_format($amount, 2) . ' has been contributed to this account.');
+        };
+
         return [
             Repeater::make('Members Receivable')
                 ->schema([
@@ -89,7 +107,9 @@ class Receivable extends Model
                                 ->preload()
                                 ->required()
                                 ->reactive()
-                                ->afterStateUpdated(fn() => null), // Do nothing on state update for user_id.
+                                ->afterStateUpdated(function (callable $get, callable $set) use ($updateContributionHint): void {
+                                    $updateContributionHint($get, $set);
+                                }),
 
                             // Payment Mode Selection
                             Select::make('payment_mode')
@@ -113,32 +133,19 @@ class Receivable extends Model
                                 ->preload()
                                 ->required()
                                 ->reactive()
-                                ->afterStateUpdated(fn() => null), // Do nothing on state update for account_id.
+                                ->afterStateUpdated(function (callable $get, callable $set) use ($updateContributionHint): void {
+                                    $updateContributionHint($get, $set);
+                                }),
 
                             // Amount Field Without Auto-Updating
                             TextInput::make('amount_contributed')
                                 ->label('Amount')
                                 ->required()
                                 ->lazy() // Will only be updated when the user explicitly enters a value.
-                                ->live()
                                 ->numeric()
                                 ->hintIcon('heroicon-o-currency-dollar')
                                 ->prefix('Kes')
-                                ->helperText(function (callable $get) {
-                                    $accountId = $get('account_id'); // Get the selected account_id
-                                    $userId = $get('user_id'); // Get the selected user_id
-
-                                    // Fetch amount_contributed using reusable method
-                                    $contributedAmount = self::getContributedAmount($accountId, $userId);
-
-                                    // Format the amount using number_format to include commas and 2 decimal places
-                                    $contributedAmountFormatted = number_format($contributedAmount ?? 0, 2);
-
-                                    // Show existing amount as guidance, but do not populate the field.
-                                    return $contributedAmount
-                                        ? "Kes $contributedAmountFormatted has been contributed to this account."
-                                        : "Kes " . number_format(0, 2); // Ensure fallback is also properly formatted
-                                }),
+                                ->helperText(fn (callable $get) => $get('contributed_amount_hint')),
                         ])
                         ->columns(2),
 
@@ -177,24 +184,6 @@ class Receivable extends Model
         ];
     }
 
-    /**
-     * Helper method to fetch the amount_contributed from `account_collections`.
-     *
-     * @param int|null $accountId
-     * @param int|null $userId
-     * @return float|null
-     */
-    private static function getContributedAmount(?int $accountId, ?int $userId): ?float
-    {
-        if (!$accountId || !$userId) {
-            return null;
-        }
-
-        return DB::table('account_collections')
-            ->where('account_id', $accountId)
-            ->where('user_id', $userId)
-            ->value('amount'); // Fetch the amount field
-    }
 
     /**
      * Boot model events to capture effects and revert on delete/restore.
