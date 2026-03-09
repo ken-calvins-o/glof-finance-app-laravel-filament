@@ -1,4 +1,6 @@
 @php
+    use App\Support\Money;
+
     [$tableData, $accounts] = (new \App\Filament\Pages\StaticReadOnlyTable)->getTableData();
 
     // Initialize a totals array to store dynamic column totals
@@ -8,7 +10,7 @@
         foreach ($row as $column => $value) {
             // Check if the value is numeric before summing
             if (is_numeric($value)) {
-                $totals[$column] = ($totals[$column] ?? 0) + $value;
+                $totals[$column] = ($totals[$column] ?? 0) + (float) $value;
             }
         }
     }
@@ -67,21 +69,21 @@
                             <span>{{ $row['User'] }}</span>
                         </td>
                         <td style="width: 150px;" class="px-6 py-4 whitespace-nowrap text-sm text-gray-700">
-                            Kes. {{ number_format($row['Registration Fee'] ?? 0, 2) }}
+                            Kes. {{ Money::format05($row['Registration Fee'] ?? 0) }}
                         </td>
                         @foreach ($accounts as $account)
                             <td style="width: 150px;" class="px-6 py-4 whitespace-nowrap text-sm text-gray-700">
-                                Kes. {{ number_format($row[$account->name] ?? 0, 2) }}
+                                Kes. {{ Money::format05($row[$account->name] ?? 0) }}
                             </td>
                         @endforeach
                         <td style="width: 150px;" class="px-6 py-4 whitespace-nowrap text-sm text-gray-700">
-                            Kes. {{ number_format($row['Loan'] ?? 0, 2) }}
+                            Kes. {{ Money::format05($row['Loan'] ?? 0) }}
                         </td>
                         <td style="width: 150px;" class="px-6 py-4 whitespace-nowrap text-sm text-gray-700">
-                            Kes. {{ number_format($row['Savings'] ?? 0, 2) }}
+                            Kes. {{ Money::format05($row['Savings'] ?? 0) }}
                         </td>
                         <td style="width: 150px;" class="px-6 py-4 whitespace-nowrap text-sm text-gray-700">
-                            Kes. {{ number_format($row['Net Worth'] ?? 0, 2) }}
+                            Kes. {{ Money::format05($row['Net Worth'] ?? 0) }}
                         </td>
                     </tr>
                 @endforeach
@@ -95,21 +97,21 @@
                         Totals
                     </th>
                     <th style="width: 150px;" class="px-6 py-3 text-left text-sm text-gray-700 border-gray-300">
-                        {{ number_format($totals['Registration Fee'] ?? 0, 2) }}
+                        {{ Money::format05($totals['Registration Fee'] ?? 0) }}
                     </th>
                     @foreach ($accounts as $account)
                         <th style="width: 150px;" class="px-6 py-3 text-left text-sm text-gray-700 border-gray-300">
-                            {{ number_format($totals[$account->name] ?? 0, 2) }}
+                            {{ Money::format05($totals[$account->name] ?? 0) }}
                         </th>
                     @endforeach
                     <th style="width: 150px;" class="px-6 py-3 text-left text-sm text-gray-700 border-gray-300">
-                        {{ number_format($totals['Loan'] ?? 0, 2) }}
+                        {{ Money::format05($totals['Loan'] ?? 0) }}
                     </th>
                     <th style="width: 150px;" class="px-6 py-3 text-left text-sm text-gray-700 border-gray-300">
-                        {{ number_format($totals['Savings'] ?? 0, 2) }}
+                        {{ Money::format05($totals['Savings'] ?? 0) }}
                     </th>
                     <th style="width: 150px;" class="px-6 py-3 text-left text-sm text-gray-700 border-gray-300">
-                        {{ number_format($totals['Net Worth'] ?? 0, 2) }}
+                        {{ Money::format05($totals['Net Worth'] ?? 0) }}
                     </th>
                 </tr>
                 </tfoot>

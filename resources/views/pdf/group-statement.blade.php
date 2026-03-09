@@ -99,6 +99,8 @@
 </div>
 
 @php
+    use App\Support\Money;
+
     // Fetch data and accounts:
     [$tableData, $accounts] = (new \App\Filament\Pages\StaticReadOnlyTable)->getTableData();
 
@@ -108,7 +110,7 @@
     foreach ($tableData as $row) {
         foreach ($row as $column => $value) {
             if (is_numeric($value)) {
-                $totals[$column] = ($totals[$column] ?? 0) + $value;
+                $totals[$column] = ($totals[$column] ?? 0) + (float) $value;
             }
         }
     }
@@ -131,13 +133,13 @@
     @foreach ($tableData as $row)
         <tr>
             <td>{{ $row['User'] }}</td>
-            <td>{{ number_format($row['Registration Fee'] ?? 0, 2) }}</td>
+            <td>{{ Money::format05($row['Registration Fee'] ?? 0) }}</td>
             @foreach ($accounts as $account)
-                <td>{{ number_format($row[$account->name] ?? 0, 2) }}</td>
+                <td>{{ Money::format05($row[$account->name] ?? 0) }}</td>
             @endforeach
-            <td>{{ number_format($row['Loan'] ?? 0, 2) }}</td>
-            <td>{{ number_format($row['Savings'] ?? 0, 2) }}</td>
-            <td>{{ number_format($row['Net Worth'] ?? 0, 2) }}</td>
+            <td>{{ Money::format05($row['Loan'] ?? 0) }}</td>
+            <td>{{ Money::format05($row['Savings'] ?? 0) }}</td>
+            <td>{{ Money::format05($row['Net Worth'] ?? 0) }}</td>
         </tr>
     @endforeach
     </tbody>
@@ -148,15 +150,15 @@
         <th>Totals</th>
         <td>
             <strong>
-                {{ number_format($totals['Registration Fee'] ?? 0, 2) }}
+                {{ Money::format05($totals['Registration Fee'] ?? 0) }}
             </strong>
         </td>
         @foreach ($accounts as $account)
-            <td><strong>{{ number_format($totals[$account->name] ?? 0, 2) }}</strong></td>
+            <td><strong>{{ Money::format05($totals[$account->name] ?? 0) }}</strong></td>
         @endforeach
-        <td><strong>{{ number_format($totals['Loan'] ?? 0, 2) }}</strong></td>
-        <td><strong>{{ number_format($totals['Savings'] ?? 0, 2) }}</strong></td>
-        <td><strong>{{ number_format($totals['Net Worth'] ?? 0, 2) }}</strong></td>
+        <td><strong>{{ Money::format05($totals['Loan'] ?? 0) }}</strong></td>
+        <td><strong>{{ Money::format05($totals['Savings'] ?? 0) }}</strong></td>
+        <td><strong>{{ Money::format05($totals['Net Worth'] ?? 0) }}</strong></td>
     </tr>
     </tfoot>
 </table>

@@ -7,6 +7,7 @@ use App\Models\AccountCollection;
 use App\Models\Loan;
 use App\Models\Saving;
 use App\Models\User;
+use App\Support\Money;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Filament\Pages\Actions\Action;
 use Filament\Pages\Page;
@@ -121,12 +122,14 @@ class StaticReadOnlyTable extends Page
             $exportRow = ['User' => $row['User']];
 
             foreach ($accounts as $account) {
-                $exportRow[$account->name] = $row['Account ' . $account->id] ?? 0.00;
+                // In getTableData(), dynamic columns are keyed by account name.
+                $exportRow[$account->name] = Money::roundToNearest05($row[$account->name] ?? 0.00);
             }
-            $exportRow['Registration Fee'] = $row['Registration Fee'] ?? 0.00;
-            $exportRow['Loan'] = $row['Loan'] ?? 0.00;
-            $exportRow['Savings'] = $row['Savings'] ?? 0.00;
-            $exportRow['Net Worth'] = $row['Net Worth'] ?? 0.00;
+
+            $exportRow['Registration Fee'] = Money::roundToNearest05($row['Registration Fee'] ?? 0.00);
+            $exportRow['Loan'] = Money::roundToNearest05($row['Loan'] ?? 0.00);
+            $exportRow['Savings'] = Money::roundToNearest05($row['Savings'] ?? 0.00);
+            $exportRow['Net Worth'] = Money::roundToNearest05($row['Net Worth'] ?? 0.00);
 
             $exportData[] = $exportRow;
         }
@@ -143,17 +146,27 @@ class StaticReadOnlyTable extends Page
                 ->icon('heroicon-o-arrow-down-tray')
                 ->color('success')
                 ->action(function () {
-                    // Use Laravel Excel to create and return export
                     $exportData = $this->getExportData();
 
                     return response()->streamDownload(function () use ($exportData) {
                         $file = fopen('php://output', 'w');
+
+                        if (empty($exportData)) {
+                            fputcsv($file, ['User']);
+                            fclose($file);
+                            return;
+                        }
 
                         // Add a header row to the CSV file (e.g., column names)
                         fputcsv($file, array_keys($exportData[0]));
 
                         // Add all the rows of data
                         foreach ($exportData as $row) {
+                            // Ensure any numeric values are rounded consistently.
+                            $row = array_map(function ($value) {
+                                return is_numeric($value) ? Money::roundToNearest05($value) : $value;
+                            }, $row);
+
                             fputcsv($file, $row);
                         }
 
