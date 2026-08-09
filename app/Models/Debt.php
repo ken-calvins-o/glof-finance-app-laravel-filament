@@ -3,12 +3,12 @@
 namespace App\Models;
 
 use App\Enums\DebtStatusEnum;
+use App\Filament\Forms\Choice;
 use App\Services\DebtRepaymentService;
 use App\Support\Money;
 use Filament\Forms\Components\Placeholder;
 use Filament\Forms\Components\Section;
 use Filament\Forms\Components\TextInput;
-use Filament\Forms\Components\ToggleButtons;
 use Filament\Forms\Get;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
@@ -83,8 +83,8 @@ class Debt extends Model
                         ->label('Outstanding balance')
                         ->content(fn (?Debt $record) => new HtmlString(
                             '<span class="text-lg font-semibold text-danger-600">'
-                            . e(Money::kes($record?->outstanding_balance ?? 0))
-                            . '</span>'
+                            .e(Money::kes($record?->outstanding_balance ?? 0))
+                            .'</span>'
                         )),
                 ]),
 
@@ -107,12 +107,15 @@ class Debt extends Model
                         ])
                         ->live(onBlur: true),
 
-                    ToggleButtons::make('from_savings')
+                    Choice::between(
+                        'from_savings',
+                        'Their savings',
+                        'A fresh payment',
+                        'heroicon-m-wallet',
+                        'heroicon-m-banknotes',
+                    )
                         ->label('Where is the money coming from?')
-                        ->boolean('Their savings', 'A fresh payment')
                         ->default(false)
-                        ->inline()
-                        ->grouped()
                         ->live(),
 
                     Placeholder::make('effect')

@@ -2,12 +2,12 @@
 
 namespace App\Models;
 
+use App\Filament\Forms\Choice;
 use App\Support\Money;
 use Filament\Forms\Components\Placeholder;
 use Filament\Forms\Components\Repeater;
 use Filament\Forms\Components\Select;
 use Filament\Forms\Components\TextInput;
-use Filament\Forms\Components\ToggleButtons;
 use Filament\Forms\Components\Wizard;
 use Filament\Forms\Get;
 use Illuminate\Database\Eloquent\Model;
@@ -106,17 +106,16 @@ class Payable extends Model
                         ->searchable()
                         ->required(),
 
-                    ToggleButtons::make('is_general')
+                    Choice::between(
+                        'is_general',
+                        'Everyone pays the same',
+                        'Different amount each',
+                        'heroicon-o-user-group',
+                        'heroicon-o-adjustments-horizontal',
+                    )
                         ->label('How is the cost split?')
-                        ->boolean('Everyone pays the same', 'Different amount each')
-                        ->icons([
-                            1 => 'heroicon-o-user-group',
-                            0 => 'heroicon-o-adjustments-horizontal',
-                        ])
                         ->default(true)
                         ->required()
-                        ->inline()
-                        ->grouped()
                         ->live()
                         ->helperText(fn ($state) => $state
                             ? 'Every member is charged the same amount, apart from anyone you leave out.'
@@ -140,12 +139,15 @@ class Payable extends Model
                         ->live(onBlur: true)
                         ->visible(fn (Get $get) => (bool) $get('is_general')),
 
-                    ToggleButtons::make('from_savings')
+                    Choice::between(
+                        'from_savings',
+                        'From their savings',
+                        'They pay separately',
+                        'heroicon-m-wallet',
+                        'heroicon-m-banknotes',
+                    )
                         ->label('How is it being paid?')
-                        ->boolean('From their savings', 'They pay separately')
                         ->default(false)
-                        ->inline()
-                        ->grouped()
                         ->helperText('"From their savings" takes the money the members already hold with the group.')
                         ->visible(fn (Get $get) => (bool) $get('is_general')),
 
@@ -170,7 +172,7 @@ class Payable extends Model
                         ->reorderable(false)
                         ->itemLabel(fn (array $state): ?string => $state['user_id']
                             ? trim((User::find($state['user_id'])?->name ?? '')
-                                . (is_numeric($state['total_amount'] ?? null) ? ' · ' . Money::kes($state['total_amount']) : ''))
+                                .(is_numeric($state['total_amount'] ?? null) ? ' · '.Money::kes($state['total_amount']) : ''))
                             : null)
                         ->columns(12)
                         ->schema([
@@ -192,12 +194,9 @@ class Payable extends Model
                                 ->live(onBlur: true)
                                 ->columnSpan(['default' => 12, 'md' => 3]),
 
-                            ToggleButtons::make('from_savings')
+                            Choice::between('from_savings', 'Savings', 'Separately')
                                 ->label('Paid from')
-                                ->boolean('Savings', 'Separately')
                                 ->default(false)
-                                ->inline()
-                                ->grouped()
                                 ->columnSpan(['default' => 12, 'md' => 4]),
                         ])
                         ->visible(fn (Get $get) => ! $get('is_general')),
@@ -257,8 +256,8 @@ class Payable extends Model
 
             $rows = [
                 'Fund' => $fund ?? '—',
-                'Period' => trim(($month ?? '') . ' ' . ($year ?? '')) ?: '—',
-                'Members charged' => $count . ($excludedNames ? ' (skipping ' . e($excludedNames) . ')' : ' — everyone'),
+                'Period' => trim(($month ?? '').' '.($year ?? '')) ?: '—',
+                'Members charged' => $count.($excludedNames ? ' (skipping '.e($excludedNames).')' : ' — everyone'),
                 'Each member pays' => Money::kes($each),
             ];
         } else {
@@ -267,7 +266,7 @@ class Payable extends Model
 
             $rows = [
                 'Fund' => $fund ?? '—',
-                'Period' => trim(($month ?? '') . ' ' . ($year ?? '')) ?: '—',
+                'Period' => trim(($month ?? '').' '.($year ?? '')) ?: '—',
                 'Members charged' => (string) $rows->count(),
             ];
         }
