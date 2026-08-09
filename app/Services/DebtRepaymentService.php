@@ -3,10 +3,16 @@
 namespace App\Services;
 
 use App\Enums\DebtStatusEnum;
+use App\Enums\PaymentMode;
 use App\Models\AccountCollection;
 use App\Models\Debt;
 use App\Models\Loan;
+use App\Models\Month;
+use App\Models\MonthlyReceivable;
+use App\Models\Receivable;
+use App\Models\ReceivableYear;
 use App\Models\Saving;
+use App\Models\Year;
 use Illuminate\Support\Facades\DB;
 use RuntimeException;
 
@@ -71,6 +77,28 @@ class DebtRepaymentService
                 $loan->save();
             }
 
+            /*
+             * A repayment is money coming in, so record it as a collection.
+             *
+             * It was previously written only to the debt, the fund's running
+             * total and the savings ledger — never as a Receivable. But
+             * Receivable is what the Collections screen, a member's recent
+             * activity and the dashboard's "collected this month" all read, so a
+             * member who paid 4,000, was charged 5,000 and then settled the
+             * 1,000 shortfall still showed 4,000 collected, and the repayment
+             * appeared nowhere.
+             *
+             * Two deliberate limits:
+             *  - Paying from savings is excluded. That moves money the group
+             *    already holds for the member; nothing new comes in, so counting
+             *    it as a collection would inflate the totals.
+             *  - Only fund debts are recorded. A loan repayment has no fund to
+             *    file against, and receivables.account_id cannot be null.
+             */
+            if (! is_null($accountId) && ! $fromSavings) {
+                $this->recordAsCollection($debt, $amount);
+            }
+
             // Credit the repayment back to the fund it was owed against.
             if (! is_null($accountId)) {
                 AccountCollection::firstOrCreate(
@@ -108,6 +136,37 @@ class DebtRepaymentService
 
             return $debt->refresh();
         });
+    }
+
+    /**
+     * Write the repayment into the collections ledger.
+     *
+     * Note this does NOT touch the fund's running total or the savings ledger —
+     * apply() does both itself, immediately after calling this. Creating the row
+     * here only makes the money visible on the screens that read collections.
+     */
+    protected function recordAsCollection(Debt $debt, float $amount): void
+    {
+        $receivable = Receivable::create([
+            'user_id' => $debt->user_id,
+            'account_id' => $debt->account_id,
+            'amount_contributed' => $amount,
+            'from_savings' => false,
+            'payment_method' => PaymentMode::Cash->value,
+            'source' => Receivable::SOURCE_DEBT_REPAYMENT,
+        ]);
+
+        // File it in the current period so it is not blank in the "For" column.
+        $month = Month::where('name', now()->format('F'))->value('id');
+        $year = Year::where('year', now()->year)->value('id');
+
+        if ($month) {
+            MonthlyReceivable::create(['receivable_id' => $receivable->id, 'month_id' => $month]);
+        }
+
+        if ($year) {
+            ReceivableYear::create(['receivable_id' => $receivable->id, 'year_id' => $year]);
+        }
     }
 
     /**
