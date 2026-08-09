@@ -77,6 +77,13 @@
             "npm install",
             "npm run build"
         ],
+        "refresh": [
+            "@php artisan migrate",
+            "@php artisan storage:link",
+            "@php artisan optimize:clear",
+            "npm install",
+            "npm run build"
+        ],
         "herd": [
             "Composer\\Config::disableProcessTimeout",
             "npx concurrently -c \"#c4b5fd,#fdba74\" \"php artisan queue:listen --tries=1\" \"npm run dev\" --names=queue,vite"

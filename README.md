@@ -192,10 +192,49 @@ composer setup
 ```
 
 `composer setup` writes `.env`, generates the app key, runs the migrations and
-seeders, links storage, and builds the frontend assets.
+seeders, links storage, and builds the frontend assets. It is meant for a **new**
+installation — if you already have data, see "Updating an existing installation"
+just below, because seeding again would duplicate every member.
 
 Then open **http://glof.test** and sign in with the seeded treasurer account
 below.
+
+### Updating an existing installation
+
+If you already have this project running with real data, **do not run
+`composer setup`** — it regenerates the app key (signing everyone out) and runs
+the seeders again, which would duplicate every member and fund. Use:
+
+```bash
+git pull
+composer install
+composer refresh
+```
+
+`composer refresh` applies any new migrations, relinks storage, clears caches
+and rebuilds assets. It never seeds and never touches your app key.
+
+Two things to check by hand after pulling, because `.env` is not in version
+control and so does not update itself:
+
+- Set `APP_URL=http://glof.test` (or whatever domain you linked).
+- Leave `APP_TIMEZONE` alone if your existing timestamps were written under UTC.
+  `.env.example` now defaults new installs to `Africa/Nairobi`; changing it on an
+  established database shifts how stored times read back.
+
+### If the .test domain will not resolve
+
+`DNS_PROBE_FINISHED_NXDOMAIN` means Herd has not been told about the site yet,
+or its DNS service is not running. In order:
+
+```bash
+herd links     # is "glof" listed?
+herd link glof # if not — run this from inside the project folder
+herd restart   # Windows in particular sometimes needs this after install
+```
+
+The domain is registered on your own machine, so this has to be run locally —
+there is nothing in the repository that can create it for you.
 
 ### Working on the frontend
 
