@@ -134,18 +134,28 @@ and the `.test` domain with nothing to configure.
 
 ### 1) Put the project where Herd can see it
 
-Clone into a directory Herd parks (`~/Herd` by default):
+Clone into a directory Herd parks (`~/Herd` by default), then give the site a
+short domain:
 
 ```bash
 cd ~/Herd
 git clone https://github.com/ken-calvins-o/glof-finance-app-laravel-filament.git
 cd glof-finance-app-laravel-filament
+
+herd link glof
 ```
 
-Herd serves the folder immediately at
-**http://glof-finance-app-laravel-filament.test**. If you cloned somewhere else,
-either park that directory (`herd park`) or link the project (`herd link`), and
-adjust `APP_URL` to whatever domain Herd reports.
+The site is now served at **http://glof.test**.
+
+`herd link <name>` is what buys the short domain. A parked folder is served
+under its own name, which for this repository would be the unwieldy
+`glof-finance-app-laravel-filament.test`; linking overrides that without
+renaming the directory or the repository. (Renaming the folder to `glof` and
+leaving it parked works just as well, if you would rather.)
+
+Any domain is fine — just keep `APP_URL` in `.env` in step with it. That is the
+only place the hostname is configured: `vite.config.js` reads it from there, so
+the dev server follows automatically.
 
 The app needs **PHP 8.2 or newer**. Herd's default is fine; to pin it,
 `herd use php@8.3` inside the project directory.
@@ -178,8 +188,8 @@ composer setup
 `composer setup` writes `.env`, generates the app key, runs the migrations and
 seeders, links storage, and builds the frontend assets.
 
-Then open **http://glof-finance-app-laravel-filament.test** and sign in with the
-seeded treasurer account below.
+Then open **http://glof.test** and sign in with the seeded treasurer account
+below.
 
 ### Working on the frontend
 
@@ -193,8 +203,7 @@ npm run dev
 If you have secured the site (`herd secure`), it is served over https, and a
 dev server on plain http would have its assets blocked by the browser — the
 panel would load completely unstyled. `vite.config.js` handles this by reusing
-Herd's own certificate for the site; no flags needed. Should the Herd domain
-differ from the folder name, set `VITE_DEV_HOST` in `.env`.
+Herd's own certificate for the host in `APP_URL`; no flags needed.
 
 Remember that this project uses a **custom Filament theme**, so any change to
 `resources/css/app.css`, or any new utility class in a Blade or PHP file,
@@ -224,8 +233,8 @@ composer herd
 
 ### Health check
 
-Herd shows the site as up once `http://glof-finance-app-laravel-filament.test/up`
-returns 200, which is a quick way to confirm PHP and the database are reachable.
+Herd shows the site as up once `http://glof.test/up` returns 200, which is a
+quick way to confirm PHP and the database are reachable.
 
 ---
 
