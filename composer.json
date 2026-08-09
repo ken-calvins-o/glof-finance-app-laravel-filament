@@ -68,6 +68,18 @@
         "dev": [
             "Composer\\Config::disableProcessTimeout",
             "npx concurrently -c \"#93c5fd,#c4b5fd,#fdba74\" \"php artisan serve\" \"php artisan queue:listen --tries=1\" \"npm run dev\" --names=server,queue,vite"
+        ],
+        "setup": [
+            "@php -r \"file_exists('.env') || copy('.env.example', '.env');\"",
+            "@php artisan key:generate --ansi",
+            "@php artisan migrate --seed",
+            "@php artisan storage:link",
+            "npm install",
+            "npm run build"
+        ],
+        "herd": [
+            "Composer\\Config::disableProcessTimeout",
+            "npx concurrently -c \"#c4b5fd,#fdba74\" \"php artisan queue:listen --tries=1\" \"npm run dev\" --names=queue,vite"
         ]
     },
     "extra": {

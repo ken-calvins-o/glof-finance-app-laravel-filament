@@ -74,7 +74,10 @@ The app includes a scheduled task that applies **monthly interest** to outstandi
 
 - Console command: `app:apply-monthly-interest`
 - Default behavior: **1% monthly** interest (as implemented in the domain service)
-- Schedule: runs on the **1st day of every month at 00:00** (app timezone)
+- Schedule: runs on the **1st day of every month at 00:00** in `APP_TIMEZONE`,
+  which `.env.example` sets to `Africa/Nairobi` for new installations. Existing
+  installations that recorded their timestamps under UTC should leave the value
+  alone — changing it after the fact shifts how those stored times read back.
 
 The scheduler includes:
 - `withoutOverlapping()` at schedule level
@@ -124,37 +127,118 @@ npm run build
 
 ---
 
-## Getting started (local development)
+## Getting started with Laravel Herd
 
-### 1) Clone and install dependencies
+Herd is the quickest way to run this project locally — it provides PHP, nginx
+and the `.test` domain with nothing to configure.
+
+### 1) Put the project where Herd can see it
+
+Clone into a directory Herd parks (`~/Herd` by default):
+
 ```bash
+cd ~/Herd
 git clone https://github.com/ken-calvins-o/glof-finance-app-laravel-filament.git
 cd glof-finance-app-laravel-filament
+```
 
+Herd serves the folder immediately at
+**http://glof-finance-app-laravel-filament.test**. If you cloned somewhere else,
+either park that directory (`herd park`) or link the project (`herd link`), and
+adjust `APP_URL` to whatever domain Herd reports.
+
+The app needs **PHP 8.2 or newer**. Herd's default is fine; to pin it,
+`herd use php@8.3` inside the project directory.
+
+### 2) Create the database
+
+Herd Pro ships MySQL — start it under **Services**, then create the database:
+
+```bash
+herd mysql -e "CREATE DATABASE glof_finance_app"
+```
+
+The credentials in `.env.example` (`127.0.0.1:3306`, user `root`, no password)
+already match Herd's MySQL, so there is nothing to change.
+
+**On Herd's free tier**, there is no database server. Use SQLite instead — open
+`.env.example` and follow the note above the database block, then:
+
+```bash
+touch database/database.sqlite
+```
+
+### 3) Install and set up
+
+```bash
 composer install
-npm install
+composer setup
 ```
 
-### 2) Configure environment
+`composer setup` writes `.env`, generates the app key, runs the migrations and
+seeders, links storage, and builds the frontend assets.
+
+Then open **http://glof-finance-app-laravel-filament.test** and sign in with the
+seeded treasurer account below.
+
+### Working on the frontend
+
+The built assets from `composer setup` are enough to use the app. While
+changing styles or Blade views, run the Vite dev server for hot reloading:
+
 ```bash
-cp .env.example .env
-php artisan key:generate
+npm run dev
 ```
 
-Set your database credentials in `.env`.
+If you have secured the site (`herd secure`), it is served over https, and a
+dev server on plain http would have its assets blocked by the browser — the
+panel would load completely unstyled. `vite.config.js` handles this by reusing
+Herd's own certificate for the site; no flags needed. Should the Herd domain
+differ from the folder name, set `VITE_DEV_HOST` in `.env`.
 
-### 3) Run migrations (and seed if your repo includes seeders)
+Remember that this project uses a **custom Filament theme**, so any change to
+`resources/css/app.css`, or any new utility class in a Blade or PHP file,
+requires a rebuild (`npm run build`) before it shows up in production assets.
+
+### The scheduler and the queue
+
+Monthly interest is applied by a scheduled command (see below). Herd Pro can run
+the scheduler for you — enable it for this site under **Services** — otherwise
+trigger it by hand while developing:
+
 ```bash
-php artisan migrate
-# optional:
-# php artisan db:seed
+php artisan schedule:run
 ```
 
-### 4) Build assets and run the app
+The queue is configured to use the database. Run a worker when you need one:
+
 ```bash
-npm run build   # or: npm run dev
+php artisan queue:listen --tries=1
+```
+
+Or run the worker and Vite together:
+
+```bash
+composer herd
+```
+
+### Health check
+
+Herd shows the site as up once `http://glof-finance-app-laravel-filament.test/up`
+returns 200, which is a quick way to confirm PHP and the database are reachable.
+
+---
+
+## Getting started without Herd
+
+```bash
+composer install
+composer setup
 php artisan serve
 ```
+
+Set your database credentials in `.env` before running `composer setup`, and
+change `APP_URL` to `http://127.0.0.1:8000`.
 
 ---
 

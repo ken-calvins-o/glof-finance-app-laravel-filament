@@ -333,24 +333,41 @@ class CreateReceivable extends CreateRecord
     }
 
     /**
-     * Create or update the contributed amount in AccountCollection.
+     * Add this contribution to the member's running total for the fund.
      *
-     * @param int $userId
-     * @param int $accountId
-     * @param float $amountContributed
-     * @return void
+     * This used to be an updateOrCreate() whose value was
+     * `DB::raw("COALESCE(amount, 0) + $amountContributed")`. That works for the
+     * UPDATE branch, but updateOrCreate falls through to an INSERT when the
+     * member has never contributed to the fund before — and an INSERT cannot
+     * reference a column in its own VALUES clause. MySQL rejects it with
+     * "Unknown column 'amount' in 'field list'", SQLite with "no such column:
+     * amount". So the very first contribution any member made to any fund
+     * failed, and only the second one onwards worked.
+     *
+     * Reading, adding and saving handles both cases and drops the interpolated
+     * value out of raw SQL at the same time. The row is locked because several
+     * members can be posted in one batch inside a single transaction.
      */
     protected function updateOrCreateAccountCollection(int $userId, int $accountId, float $amountContributed): void
     {
-        AccountCollection::updateOrCreate(
-            [
-                'user_id' => $userId,
-                'account_id' => $accountId,
-            ],
-            [
-                'amount' => DB::raw("COALESCE(amount, 0) + $amountContributed"),
-            ]
-        );
+        $collection = AccountCollection::query()
+            ->where('user_id', $userId)
+            ->where('account_id', $accountId)
+            ->lockForUpdate()
+            ->first();
+
+        if ($collection) {
+            $collection->amount = (float) $collection->amount + $amountContributed;
+            $collection->save();
+
+            return;
+        }
+
+        AccountCollection::create([
+            'user_id' => $userId,
+            'account_id' => $accountId,
+            'amount' => $amountContributed,
+        ]);
     }
 
     /**
