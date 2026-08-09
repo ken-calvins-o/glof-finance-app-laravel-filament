@@ -61,14 +61,31 @@ class Dashboard extends BaseDashboard
     }
 
     /**
-     * The three things a treasurer starts from the home screen, as buttons
-     * rather than as a sidebar hunt. Members get none of them, because members
-     * do not record money.
+     * A link into the manual, offered from the screen everyone lands on.
+     *
+     * Built fresh each time it is asked for rather than stored: an Action is a
+     * mutable object, and the same instance placed in two positions would carry
+     * whatever the first position did to it.
+     */
+    protected function helpAction(): Action
+    {
+        return Action::make('help')
+            ->label('How do I…?')
+            ->icon('heroicon-o-lifebuoy')
+            ->color('gray')
+            ->url(Help::getUrl());
+    }
+
+    /**
+     * The things a treasurer starts from the home screen, as buttons rather
+     * than as a sidebar hunt. Members get none of them, because members do not
+     * record money — but they do get the way into the manual, which is the one
+     * thing a member on their first visit is most likely to want.
      */
     protected function getHeaderActions(): array
     {
         if (! auth()->user()?->isAdmin()) {
-            return [];
+            return [$this->helpAction()->button()];
         }
 
         return [
@@ -88,6 +105,8 @@ class Dashboard extends BaseDashboard
                     ->label('Issue a loan')
                     ->icon('heroicon-o-hand-raised')
                     ->url(LoanResource::getUrl('create')),
+
+                $this->helpAction(),
             ])
                 ->label('More')
                 ->icon('heroicon-m-ellipsis-vertical')

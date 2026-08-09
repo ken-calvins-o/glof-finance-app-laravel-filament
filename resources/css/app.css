@@ -30,6 +30,28 @@
     }
 }
 
+@layer base {
+    /*
+    | Anything Alpine only shows conditionally is marked x-cloak so it does not
+    | flash on screen in the moment between the HTML arriving and Alpine
+    | starting. Filament styles a few of its own variants of this attribute but
+    | not the bare one, so the help centre's search results and lightbox would
+    | otherwise appear for an instant on every page load.
+    */
+    [x-cloak] {
+        display: none !important;
+    }
+
+    /*
+    | The help centre's topics are <details> elements with their own chevron.
+    | `list-none` removes the built-in triangle everywhere except Safari, which
+    | still needs this.
+    */
+    summary::-webkit-details-marker {
+        display: none;
+    }
+}
+
 @layer components {
     /*
     | Sidebar group headings: the old panel rendered them at the same weight as
