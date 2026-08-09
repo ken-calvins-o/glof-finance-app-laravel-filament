@@ -138,28 +138,91 @@ class User extends Authenticatable
      | screen has to re-derive that rule.
      |---------------------------------------------------------------------*/
 
+    /**
+     * Memoised: savings balance and net worth both want the same newest row, and
+     * without this each accessor fetched it separately — two queries per member
+     * where one does.
+     */
+    protected ?Saving $latestSavingCache = null;
+
+    protected bool $latestSavingResolved = false;
+
     protected function latestSaving(): ?Saving
     {
-        return $this->relationLoaded('savings')
+        if ($this->latestSavingResolved) {
+            return $this->latestSavingCache;
+        }
+
+        $this->latestSavingResolved = true;
+
+        return $this->latestSavingCache = $this->relationLoaded('savings')
             ? $this->savings->sortByDesc('id')->first()
             : $this->savings()->latest('id')->first();
     }
 
+    /*
+    | Each of these prefers a value the query already selected.
+    |
+    | Listing members used to cost three queries per row — one for the balance,
+    | another for the net worth, a third summing the debts — so a roll of 32
+    | members fired over a hundred queries to draw one page. UserResource now
+    | selects all three as subqueries in the single query that fetches the rows,
+    | and these accessors use those when present. The per-record fallback is kept
+    | for screens that load one member on their own, where it costs nothing.
+    */
+
     public function getSavingsBalanceAttribute(): float
     {
+        if (array_key_exists('latest_saving_balance', $this->attributes)) {
+            return (float) ($this->attributes['latest_saving_balance'] ?? 0);
+        }
+
         return (float) ($this->latestSaving()?->balance ?? 0);
     }
 
     public function getNetWorthAttribute(): float
     {
+        if (array_key_exists('latest_saving_net_worth', $this->attributes)) {
+            return (float) ($this->attributes['latest_saving_net_worth'] ?? 0);
+        }
+
         return (float) ($this->latestSaving()?->net_worth ?? 0);
     }
 
     public function getOutstandingDebtAttribute(): float
     {
+        if (array_key_exists('outstanding_debt_sum', $this->attributes)) {
+            return (float) ($this->attributes['outstanding_debt_sum'] ?? 0);
+        }
+
         return (float) $this->debts()
             ->whereIn('debt_status', DebtStatusEnum::outstandingValues())
             ->sum('outstanding_balance');
+    }
+
+    /**
+     * Select the three money figures alongside the members themselves, so a
+     * list costs one query instead of one per row per figure.
+     */
+    public function scopeWithMoneyTotals(Builder $query): Builder
+    {
+        return $query
+            ->addSelect([
+                'latest_saving_balance' => Saving::query()
+                    ->select('balance')
+                    ->whereColumn('savings.user_id', 'users.id')
+                    ->latest('id')
+                    ->limit(1),
+                'latest_saving_net_worth' => Saving::query()
+                    ->select('net_worth')
+                    ->whereColumn('savings.user_id', 'users.id')
+                    ->latest('id')
+                    ->limit(1),
+            ])
+            ->withSum([
+                'debts as outstanding_debt_sum' => fn ($q) => $q
+                    ->whereIn('debt_status', DebtStatusEnum::outstandingValues()),
+            ], 'outstanding_balance');
     }
 
     public function getTotalContributedAttribute(): float
