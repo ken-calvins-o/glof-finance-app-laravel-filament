@@ -2,12 +2,12 @@
 
 namespace App\Filament\Actions;
 
+use App\Filament\Forms\Choice;
 use App\Models\Debt;
 use App\Services\DebtRepaymentService;
 use App\Support\Money;
 use Filament\Forms\Components\Placeholder;
 use Filament\Forms\Components\TextInput;
-use Filament\Forms\Components\ToggleButtons;
 use Filament\Notifications\Notification;
 use Filament\Tables\Actions\Action;
 use Illuminate\Support\HtmlString;
@@ -36,7 +36,7 @@ class RecordRepaymentAction
             ->label('Record repayment')
             ->icon('heroicon-o-banknotes')
             ->color('success')
-            ->modalHeading(fn (Debt $record) => 'Repayment from ' . ($record->user?->name ?? 'member'))
+            ->modalHeading(fn (Debt $record) => 'Repayment from '.($record->user?->name ?? 'member'))
             ->modalDescription(fn (Debt $record) => new HtmlString(sprintf(
                 'Owed on <strong>%s</strong>: <strong>%s</strong>',
                 e($record->account?->name ?? 'Loan'),
@@ -59,15 +59,18 @@ class RecordRepaymentAction
                         'max' => 'That is more than this member owes.',
                     ])
                     ->live(onBlur: true)
-                    ->hint(fn (Debt $record) => 'Owing: ' . Money::kes($record->outstanding_balance))
+                    ->hint(fn (Debt $record) => 'Owing: '.Money::kes($record->outstanding_balance))
                     ->helperText('Enter the amount actually received. Part payments are fine.'),
 
-                ToggleButtons::make('from_savings')
+                Choice::between(
+                    'from_savings',
+                    'Their savings',
+                    'A fresh payment',
+                    'heroicon-m-wallet',
+                    'heroicon-m-banknotes',
+                )
                     ->label('Where is this money coming from?')
-                    ->boolean('Their savings', 'A fresh payment')
                     ->default(false)
-                    ->inline()
-                    ->grouped()
                     ->live()
                     ->helperText('Choose "their savings" only when the group is moving money the member already holds with us.'),
 

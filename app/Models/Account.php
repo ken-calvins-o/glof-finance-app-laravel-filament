@@ -8,7 +8,6 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
-use SebastianBergmann\CodeCoverage\Report\Xml\Report;
 
 /**
  * A fund the group collects into — Bereavement, Insurance, Administration, and
@@ -23,11 +22,6 @@ class Account extends Model
     public function contributions(): HasMany
     {
         return $this->hasMany(Contribution::class);
-    }
-
-    public function reports(): HasMany
-    {
-        return $this->hasMany(Report::class);
     }
 
     public function receivables(): HasMany

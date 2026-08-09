@@ -188,6 +188,36 @@ class RepaymentIsRecordedAsCollectionTest extends TestCase
         $this->assertSame(0, $collection->effects()->count());
     }
 
+    /**
+     * Code can reach a server before its migrations do. When that happens the
+     * repayment must still go through: `source` only captions the row, it moves
+     * no money, so it is not worth failing a financial operation over.
+     */
+    public function test_a_repayment_still_works_before_the_source_column_exists(): void
+    {
+        \Illuminate\Support\Facades\Schema::table(
+            'receivables',
+            fn ($table) => $table->dropColumn('source'),
+        );
+
+        // Clear the cached schema answer so the service re-checks.
+        (function () {
+            static::$receivablesCanRecordSource = null;
+        })->call(new DebtRepaymentService(), );
+
+        [$user, $fund, $debt] = $this->memberOwing(2000);
+        AccountCollection::create(['user_id' => $user->id, 'account_id' => $fund->id, 'amount' => -2000]);
+
+        app(DebtRepaymentService::class)->apply($debt, 2000);
+
+        // The money is all recorded, even though the label could not be.
+        $this->assertEquals(0, (float) $debt->refresh()->outstanding_balance);
+        $this->assertSame(DebtStatusEnum::Cleared, $debt->debt_status);
+        $this->assertEquals(0, (float) AccountCollection::where('user_id', $user->id)->value('amount'));
+        $this->assertEquals(2000, (float) Receivable::where('user_id', $user->id)->sole()->amount_contributed);
+        $this->assertEqualsWithDelta(2000, app(GroupMetrics::class)->collectedThisMonth(), 0.001);
+    }
+
     public function test_an_ordinary_collection_is_not_marked_as_a_repayment(): void
     {
         $user = User::factory()->create();

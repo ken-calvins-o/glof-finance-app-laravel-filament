@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use App\Enums\DebtStatusEnum;
+use App\Filament\Forms\Choice;
 use App\Support\Money;
 use Filament\Forms\Components\DatePicker;
 use Filament\Forms\Components\Placeholder;
@@ -10,7 +11,6 @@ use Filament\Forms\Components\Section;
 use Filament\Forms\Components\Select;
 use Filament\Forms\Components\Textarea;
 use Filament\Forms\Components\TextInput;
-use Filament\Forms\Components\ToggleButtons;
 use Filament\Forms\Get;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
@@ -104,7 +104,7 @@ class Loan extends Model
                             $owing = User::find($state)?->outstanding_debt ?? 0;
 
                             return $owing > 0
-                                ? '⚠ This member already owes ' . Money::kes($owing) . '.'
+                                ? '⚠ This member already owes '.Money::kes($owing).'.'
                                 : 'This member has no outstanding debt.';
                         }),
 
@@ -130,13 +130,19 @@ class Loan extends Model
                 ->icon('heroicon-o-percent-badge')
                 ->columns(2)
                 ->schema([
-                    ToggleButtons::make('apply_interest')
+                    // A yes/no, so the tick and cross stay — but not the green
+                    // and red. An interest-free loan is a decision the group is
+                    // entitled to make, not a mistake to be flagged in danger red.
+                    Choice::between(
+                        'apply_interest',
+                        'Yes, charge interest',
+                        'No, interest free',
+                        'heroicon-m-check',
+                        'heroicon-m-x-mark',
+                    )
                         ->label('Charge interest on this loan?')
-                        ->boolean('Yes, charge interest', 'No, interest free')
                         ->default(false)
                         ->required()
-                        ->inline()
-                        ->grouped()
                         ->live()
                         ->columnSpanFull(),
 
@@ -148,7 +154,7 @@ class Loan extends Model
                         ->maxValue(100)
                         ->default(self::DEFAULT_MONTHLY_RATE)
                         ->required(fn (Get $get) => (bool) $get('apply_interest'))
-                        ->helperText('The group standard is ' . self::DEFAULT_MONTHLY_RATE . '% a month. Change it only if this loan was agreed on different terms.')
+                        ->helperText('The group standard is '.self::DEFAULT_MONTHLY_RATE.'% a month. Change it only if this loan was agreed on different terms.')
                         ->live(onBlur: true)
                         ->visible(fn (Get $get) => (bool) $get('apply_interest'))
                         ->columnSpanFull(),
@@ -219,7 +225,7 @@ class Loan extends Model
             e(Money::kes($amount)),
             e(Money::kes($repayable)),
             e($due),
-            $interest > 0 ? ', which includes ' . e(Money::kes($interest)) . ' interest' : ', with no interest',
+            $interest > 0 ? ', which includes '.e(Money::kes($interest)).' interest' : ', with no interest',
             e((string) self::DEFAULT_MONTHLY_RATE),
             '',
         ));
