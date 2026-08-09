@@ -18,34 +18,55 @@ Glof Finance centralizes those workflows in a database-backed system with consis
 
 ---
 
-## Core modules / features
+## How the app is organised
 
-### Members
-- Maintain a list of members (users)
-- Member-linked transactions for traceability
+The interface is grouped around what a treasurer actually does in a week, not
+around balance-sheet categories:
 
-### Savings / Contributions
-- Track member savings (credits, debits, balances, and net worth)
+| Section | What lives there |
+| --- | --- |
+| **Overview** | Where the group stands, what came in this month, who owes money, and buttons to start the day's work. |
+| **Money in** | **Collections** — payments received from members. **Group income** — joining fees, loan interest and anything else the group earns. |
+| **Money out** | **Payments** — group expenses charged to members, either the same amount each or set per member. |
+| **Loans** | **Loans issued** and **Money owed** — every loan and every outstanding balance, with repayments recorded in a single modal. |
+| **Members** | The member register, and a full statement for each person. |
+| **Reports** | The **group statement** (every member against every fund) and the **savings ledger** audit trail. |
+| **Setup** | **Funds** — the pots money is collected into. |
 
-### Collections (Receivables)
-- Record money received from members with structured entry forms
-- Payment modes supported (examples): Bank Transfer, Cash, Cheque, Mobile Money (M-PESA/Airtel), Card, Online gateway, etc.
+### Roles
 
-### Loans
-- Issue loans to members and track amounts, balances, and due dates
-- Loan creation workflow supports consistent related updates (e.g. balance/interest handling)
+The `role` on each member decides what they see:
 
-### Income (including interest)
-- Record income entries including interest income for reporting visibility
+- **Treasurer / Admin** — records money in and out, issues loans, manages members, sees everything.
+- **Member** — sees only their own savings, contributions, loans and debts. They
+  cannot reach the member register, the funds, group income or the group
+  statement, and they are not offered any "record" buttons.
 
-### Payables
-- Record outgoing payments / debits and group expenses
-- Supports more complex payout/allocation scenarios
+### Design principles
 
-### Reporting (PDF)
-- Generate group statements as PDF for meetings, sharing, and record keeping
+The interface follows a few rules consistently, and they are worth knowing
+before changing it:
 
----
+1. **Plain language over accounting jargon.** Screens say "Collections", "Money
+   owed" and "Funds" rather than "Receivables", "Debts" and "Accounts".
+2. **Ask each question once.** The accounting period is chosen once per batch,
+   not once per member; "how was this paid" is one dropdown, not a dropdown plus
+   a yes/no toggle that means something adjacent.
+3. **Show the consequence before committing.** Every form that moves money ends
+   in a running total or a plain-English summary — what the member receives,
+   what they repay, what the group is about to spend.
+4. **Validate, do not warn.** A repayment larger than the balance is refused by
+   a validation rule, not flagged by a notification that still lets the form
+   submit.
+5. **One way to write money.** All amounts go through `App\Support\Money::kes()`
+   and are right-aligned in tabular figures, so columns line up and the same
+   figure never looks different on two screens.
+6. **Badges must be actionable.** Sidebar badges show money collected this
+   month or the number of members behind on payments — never a row count.
+
+Amounts are formatted through `App\Support\Money`; shared table columns live in
+`App\Filament\Tables\Columns\MoneyColumn`; and the sidebar's structure is
+declared in one place, `App\Filament\Navigation`.
 
 ## Scheduler: Monthly interest on debts
 
@@ -86,6 +107,21 @@ php artisan schedule:list
 - **Alpine.js + Tailwind CSS** (TALL stack UI layer)
 - **Vite** (frontend build pipeline)
 
+The panel uses a custom Filament theme, which is the entry point
+`resources/css/app.css` (registered via `->viteTheme()` in
+`AppPanelProvider`). Because it is a custom theme rather than Filament's
+compiled default, **Tailwind must be able to scan every view that renders
+markup** — including plugin views. Those paths are listed explicitly in
+`tailwind.config.js`; adding a Filament plugin means adding its
+`resources/**/*.blade.php` path there, or its styles will be purged away.
+
+Rebuild after any change to the theme or to Blade/PHP that introduces new
+utility classes:
+
+```bash
+npm run build
+```
+
 ---
 
 ## Getting started (local development)
@@ -116,20 +152,26 @@ php artisan migrate
 
 ### 4) Build assets and run the app
 ```bash
-npm run dev
+npm run build   # or: npm run dev
 php artisan serve
 ```
 
 ---
 
-## Using the admin panel (Filament)
+## Using the app
 
-Once the app is running, access the Filament dashboard (commonly):
-- `/admin`
+The panel is served from the site root (`/`), not `/admin`.
 
-Create an admin user (choose one approach that matches your project):
-- via registration (if enabled), or
-- via tinker / seeder / custom artisan command (if present).
+Running `php artisan db:seed` creates the member roll along with a treasurer
+account you can sign in with:
+
+- **Email:** `admin@glof.co.ke`
+- **Password:** `password`
+
+Change that password before putting the app anywhere real. Members seeded
+alongside it have no password and cannot sign in until one is set on their
+profile; give someone the **Member** access level and they will only ever see
+their own money.
 
 ---
 

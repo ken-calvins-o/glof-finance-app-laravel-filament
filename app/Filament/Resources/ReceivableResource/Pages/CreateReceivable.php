@@ -14,12 +14,72 @@ use App\Models\MonthlyReceivable; // Include the MonthlyReceivable model
 use App\Models\ReceivableYear;    // Include the ReceivableYear model
 use Illuminate\Support\Facades\DB;
 use Illuminate\Database\Eloquent\Model;
+use Filament\Actions;
 use Filament\Notifications\Notification;
 use Filament\Resources\Pages\CreateRecord;
 
 class CreateReceivable extends CreateRecord
 {
     protected static string $resource = ReceivableResource::class;
+
+    protected static ?string $title = 'Record money in';
+
+    public function getSubheading(): ?string
+    {
+        return 'Enter what the group received, one row per member. Nothing is saved until you press "Record entries".';
+    }
+
+    protected function getCreateFormAction(): Actions\Action
+    {
+        return parent::getCreateFormAction()->label('Record entries');
+    }
+
+    protected function getCreateAnotherFormAction(): Actions\Action
+    {
+        return parent::getCreateAnotherFormAction()->label('Record and start a new batch');
+    }
+
+    protected function getCreatedNotificationTitle(): ?string
+    {
+        return 'Entries recorded';
+    }
+
+    /**
+     * Translate the redesigned form into the shape the creation logic expects.
+     *
+     * The form now asks for the period once and asks "paid by" as a single
+     * question; the code below fans that back out to per-row `month_id`,
+     * `year_id`, `from_savings` and `payment_mode` values, and turns an
+     * "arrears" batch into the negative amounts that already mean "this member
+     * owes us". The creation logic itself is untouched.
+     */
+    protected function mutateFormDataBeforeCreate(array $data): array
+    {
+        $isArrears = ($data['entry_type'] ?? Receivable::ENTRY_PAYMENT) === Receivable::ENTRY_ARREARS;
+
+        $data['Members Receivable'] = collect($data['entries'] ?? [])
+            ->map(function (array $row) use ($data, $isArrears): array {
+                $source = $row['payment_source'] ?? PaymentMode::Bank_Transfer->value;
+                $amount = (float) ($row['amount_contributed'] ?? 0);
+
+                return [
+                    'user_id' => $row['user_id'],
+                    'account_id' => $row['account_id'],
+                    // Arrears are stored as a negative contribution, which is
+                    // what turns them into a debt further down.
+                    'amount_contributed' => $isArrears ? -abs($amount) : abs($amount),
+                    'from_savings' => ! $isArrears && $source === PaymentMode::From_Savings->value,
+                    'payment_mode' => $isArrears ? PaymentMode::Credit_Loan->value : $source,
+                    'month_id' => $data['month_id'] ?? null,
+                    'year_id' => $data['year_id'] ?? null,
+                ];
+            })
+            ->all();
+
+        unset($data['entries'], $data['entry_type'], $data['month_id'], $data['year_id']);
+
+        return $data;
+    }
 
     /**
      * Handle the record creation within a transaction for atomicity.
@@ -41,6 +101,7 @@ class CreateReceivable extends CreateRecord
                 $accountId = $member['account_id'];
                 $amountContributed = $member['amount_contributed'];
                 $fromSavings = $member['from_savings'] ?? false;
+                $paymentMode = $member['payment_mode'] ?? null;
 
                 // Ensure month_id and year_id are passed for this specific member
                 $monthId = $member['month_id'] ?? null;
@@ -88,7 +149,7 @@ class CreateReceivable extends CreateRecord
                     // Note: $debtPrevOutstanding remains the value before creation/update (null if none)
 
                     // Create a Receivable record (this will save negative amounts too)
-                    $receivable = $this->createReceivableRecord($userId, $accountId, $amountContributed, $fromSavings);
+                    $receivable = $this->createReceivableRecord($userId, $accountId, $amountContributed, $fromSavings, $paymentMode);
 
                     // Add entries to MonthlyReceivable and ReceivableYear models
                     $this->createMonthlyReceivable($receivable->id, $monthId);
@@ -157,7 +218,7 @@ class CreateReceivable extends CreateRecord
                 }
 
                 // Create a Receivable record (this will save negative amounts too)
-                $receivable = $this->createReceivableRecord($userId, $accountId, $amountContributed, $fromSavings);
+                $receivable = $this->createReceivableRecord($userId, $accountId, $amountContributed, $fromSavings, $paymentMode);
 
                 // Add entries to MonthlyReceivable and ReceivableYear models
                 $this->createMonthlyReceivable($receivable->id, $monthId);
@@ -299,9 +360,10 @@ class CreateReceivable extends CreateRecord
      * @param int $accountId
      * @param float $amountContributed
      * @param bool $fromSavings
+     * @param string|null $paymentMode The method the treasurer selected.
      * @return Receivable
      */
-    protected function createReceivableRecord(int $userId, int $accountId, float $amountContributed, bool $fromSavings): Receivable
+    protected function createReceivableRecord(int $userId, int $accountId, float $amountContributed, bool $fromSavings, ?string $paymentMode = null): Receivable
     {
         // Ensure we store the exact numeric value the user provided (including negatives)
         if (!is_numeric($amountContributed)) {
@@ -311,12 +373,24 @@ class CreateReceivable extends CreateRecord
 
         $amount = (float) $amountContributed;
 
+        /*
+         * Record the method the treasurer actually chose.
+         *
+         * Previously this line ignored the selection entirely and stored
+         * "Bank Transfer" for every payment that was not from savings, so a
+         * member who paid by M-PESA appeared on their statement as a bank
+         * transfer. The dropdown existed; its value was simply thrown away.
+         */
+        $method = $fromSavings
+            ? PaymentMode::From_Savings
+            : (PaymentMode::tryFrom((string) $paymentMode) ?? PaymentMode::Bank_Transfer);
+
         return Receivable::create([
             'user_id' => $userId,
             'account_id' => $accountId,
             'amount_contributed' => $amount,
             'from_savings' => $fromSavings,
-            'payment_method' => $fromSavings ? PaymentMode::From_Savings : PaymentMode::Bank_Transfer,
+            'payment_method' => $method,
         ]);
     }
 

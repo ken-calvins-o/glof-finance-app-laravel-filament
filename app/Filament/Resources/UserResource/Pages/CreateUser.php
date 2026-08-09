@@ -12,6 +12,28 @@ class CreateUser extends CreateRecord
 {
     protected static string $resource = UserResource::class;
 
+    protected static ?string $title = 'Add a member';
+
+    public function getSubheading(): ?string
+    {
+        return 'Their joining fee is recorded as group income and credited to them straight away.';
+    }
+
+    protected function getCreateFormAction(): \Filament\Actions\Action
+    {
+        return parent::getCreateFormAction()->label('Add member');
+    }
+
+    protected function getCreatedNotificationTitle(): ?string
+    {
+        return 'Member added';
+    }
+
+    protected function getRedirectUrl(): string
+    {
+        return $this->getResource()::getUrl('view', ['record' => $this->record]);
+    }
+
     /**
      * Handle the record creation process.
      *

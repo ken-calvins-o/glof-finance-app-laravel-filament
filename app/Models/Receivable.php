@@ -3,13 +3,16 @@
 namespace App\Models;
 
 use App\Enums\PaymentMode;
-use Awcodes\Shout\Components\Shout;
-use Filament\Forms\Components\Fieldset;
+use App\Support\Money;
+use Filament\Forms\Components\Placeholder;
 use Filament\Forms\Components\Repeater;
+use Filament\Forms\Components\Section;
 use Filament\Forms\Components\Select;
 use Filament\Forms\Components\TextInput;
 use Filament\Forms\Components\ToggleButtons;
+use Filament\Forms\Get;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\HtmlString;
 use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
@@ -21,13 +24,31 @@ class Receivable extends Model
 {
     use SoftDeletes; // enable soft deletes so we can safely revert on delete and support restore
 
+    /*
+    | The cast used to be declared against `payment_mode`, which is not a column
+    | on this table — the column is `payment_method`. So the cast did nothing,
+    | every payment method came back as a bare string, and the table's badge
+    | could not colour or label it.
+    |
+    | It is resolved through PaymentMode::tryFrom() at the point of display
+    | rather than cast here, so that a row carrying a value written before the
+    | enum settled down degrades to plain text instead of throwing and taking
+    | the whole table with it.
+    */
     protected $casts = [
         'id' => 'integer',
         'user_id' => 'integer',
         'account_id' => 'integer',
         'from_savings' => 'boolean',
-        'payment_mode' => PaymentMode::class,
     ];
+
+    /**
+     * The payment method as an enum, or null if the stored value predates it.
+     */
+    public function getPaymentModeAttribute(): ?PaymentMode
+    {
+        return PaymentMode::tryFrom((string) $this->payment_method);
+    }
 
     public function getMonthIdAttribute()
     {
@@ -73,115 +94,233 @@ class Receivable extends Model
         return $this->hasMany(ReceivableEffect::class);
     }
 
+    /**
+     * The entry type chosen at the top of the form. "Arrears" is stored as a
+     * negative amount, which is what the creation service already understands.
+     */
+    public const ENTRY_PAYMENT = 'payment';
+
+    public const ENTRY_ARREARS = 'arrears';
+
+    /**
+     * How much a member has already put into a given fund.
+     */
+    public static function contributedSoFar(?int $userId, ?int $accountId): ?float
+    {
+        if (! $userId || ! $accountId) {
+            return null;
+        }
+
+        return (float) (AccountCollection::query()
+            ->where('user_id', $userId)
+            ->where('account_id', $accountId)
+            ->value('amount') ?? 0.0);
+    }
+
+    /**
+     * Recording money coming in.
+     *
+     * What changed, and why:
+     *
+     * 1. The period (month and year) was asked once per member row. Posting a
+     *    meeting's twenty contributions meant setting the same month twenty
+     *    times, and any slip silently filed one member's money in the wrong
+     *    month. It is now asked once, at the top, and applied to every row.
+     *
+     * 2. There were two separate controls both labelled "Payment Mode": a
+     *    dropdown of payment methods, and a yes/no toggle asking whether to
+     *    deduct from the member's savings. They are one question — where did
+     *    this money come from — so they are now one dropdown.
+     *
+     * 3. Entering a negative amount quietly created a debt. Nothing on screen
+     *    said so. That behaviour is preserved but is now reached by choosing
+     *    "Arrears" deliberately at the top of the form, rather than by typing a
+     *    minus sign and hoping.
+     *
+     * 4. Each row was wrapped in three nested boxes (Repeater > Fieldset >
+     *    Fieldset) around four fields. Rows are now a single line of inputs,
+     *    so twenty of them fit on a screen instead of three.
+     */
     public static function getForm(): array
     {
-        $updateContributionHint = function (callable $get, callable $set): void {
-            $accountId = $get('account_id');
-            $userId = $get('user_id');
-
-            if (! $accountId || ! $userId) {
-                $set('contributed_amount_hint', null);
-                return;
-            }
-
-            $amount = AccountCollection::query()
-                ->where('account_id', (int) $accountId)
-                ->where('user_id', (int) $userId)
-                ->value('amount');
-
-            $amount = $amount !== null ? (float) $amount : 0.0;
-
-            $set('contributed_amount_hint', 'Kes ' . number_format($amount, 2) . ' has been contributed to this account.');
-        };
-
         return [
-            Repeater::make('Members Receivable')
+            Section::make('What are you recording?')
+                ->description('These settings apply to every entry you add below.')
+                ->icon('heroicon-o-calendar-days')
+                ->columns(3)
                 ->schema([
-                    Fieldset::make('Receivable Details')
+                    ToggleButtons::make('entry_type')
+                        ->label('Type of entry')
+                        ->options([
+                            self::ENTRY_PAYMENT => 'Money received',
+                            self::ENTRY_ARREARS => 'Arrears owed',
+                        ])
+                        ->icons([
+                            self::ENTRY_PAYMENT => 'heroicon-o-arrow-down-tray',
+                            self::ENTRY_ARREARS => 'heroicon-o-exclamation-triangle',
+                        ])
+                        ->colors([
+                            self::ENTRY_PAYMENT => 'success',
+                            self::ENTRY_ARREARS => 'danger',
+                        ])
+                        ->default(self::ENTRY_PAYMENT)
+                        ->required()
+                        ->inline()
+                        ->grouped()
+                        ->live()
+                        ->helperText(fn ($state) => $state === self::ENTRY_ARREARS
+                            ? 'Records what these members still owe. It creates a debt against them instead of crediting a payment.'
+                            : 'Records money the group has actually received.')
+                        ->columnSpanFull(),
+
+                    Select::make('month_id')
+                        ->label('Month it belongs to')
+                        ->options(fn () => Month::orderBy('id')->pluck('name', 'id')->all())
+                        ->default(fn () => Month::where('name', now()->format('F'))->value('id'))
+                        ->native(false)
+                        ->searchable()
+                        ->required(),
+
+                    Select::make('year_id')
+                        ->label('Year')
+                        ->options(fn () => Year::orderByDesc('year')->pluck('year', 'id')->all())
+                        ->default(fn () => Year::where('year', now()->year)->value('id'))
+                        ->native(false)
+                        ->searchable()
+                        ->required(),
+
+                    Placeholder::make('period_note')
+                        ->hiddenLabel()
+                        ->content(new HtmlString(
+                            'This is the month the money is <em>for</em>, which is not always the month you are entering it in.'
+                        )),
+                ]),
+
+            Section::make('Entries')
+                ->description('Add one row per member. You can add as many as you need before saving.')
+                ->icon('heroicon-o-list-bullet')
+                ->schema([
+                    Repeater::make('entries')
+                        ->hiddenLabel()
+                        ->addActionLabel('Add another member')
+                        ->reorderable(false)
+                        ->cloneable()
+                        ->defaultItems(1)
+                        ->minItems(1)
+                        ->live()
+                        ->itemLabel(fn (array $state): ?string => self::describeRow($state))
+                        ->columns(12)
                         ->schema([
-                            // Select the Member/User
                             Select::make('user_id')
                                 ->label('Member')
                                 ->relationship('user', 'name')
                                 ->searchable()
                                 ->preload()
                                 ->required()
-                                ->reactive()
-                                ->afterStateUpdated(function (callable $get, callable $set) use ($updateContributionHint): void {
-                                    $updateContributionHint($get, $set);
-                                }),
+                                ->live()
+                                ->columnSpan(['default' => 12, 'md' => 3]),
 
-                            // Payment Mode Selection
-                            Select::make('payment_mode')
-                                ->enum(PaymentMode::class)
-                                ->hintIcon('heroicon-o-banknotes')
-                                ->default(PaymentMode::Bank_Transfer)
-                                ->options(
-                                    collect(PaymentMode::cases())
-                                        // Exclude both 'From_Savings' and 'Credit_Loan' cases
-                                        ->reject(fn($case) => $case === PaymentMode::From_Savings || $case === PaymentMode::Credit_Loan)
-                                        ->mapWithKeys(fn($case) => [$case->value => ucwords(str_replace('_', ' ', $case->value))])
-                                )
-                                ->searchable()
-                                ->required(),
-
-                            // Select Account
                             Select::make('account_id')
+                                ->label('Fund')
                                 ->relationship('account', 'name')
-                                ->label('Account')
                                 ->searchable()
                                 ->preload()
                                 ->required()
-                                ->reactive()
-                                ->afterStateUpdated(function (callable $get, callable $set) use ($updateContributionHint): void {
-                                    $updateContributionHint($get, $set);
-                                }),
+                                ->live()
+                                ->columnSpan(['default' => 12, 'md' => 3]),
 
-                            // Amount Field Without Auto-Updating
                             TextInput::make('amount_contributed')
                                 ->label('Amount')
-                                ->required()
-                                ->lazy() // Will only be updated when the user explicitly enters a value.
+                                ->prefix('KES')
                                 ->numeric()
-                                ->hintIcon('heroicon-o-currency-dollar')
-                                ->prefix('Kes')
-                                ->helperText(fn (callable $get) => $get('contributed_amount_hint')),
-                        ])
-                        ->columns(2),
-
-                    Fieldset::make('Accounting Period')
-                        ->schema([
-                            Select::make('month_id')
-                                ->label('Month')
-                                ->searchable()
-                                ->preload()
                                 ->required()
-                                ->options(Month::all()->pluck('name', 'id')->toArray()) // Fetch months
-                                ->default(Month::where('name', now()->format('F'))->value('id')), // Set the default to the current month's ID
-                            Select::make('year_id')
-                                ->label('Year')
-                                ->searchable()
-                                ->preload()
-                                ->required()
-                                ->options(Year::all()->pluck('year', 'id')->toArray()) // Fetch years
-                                ->default(Year::where('year', now()->year)->value('id')), // Set the default to the current year's ID
-                        ]),
+                                ->minValue(0.01)
+                                ->validationMessages([
+                                    'min' => 'Enter a positive amount. To record what a member owes, switch the type to "Arrears owed" at the top.',
+                                ])
+                                ->live(onBlur: true)
+                                // Answers "have they already paid this one?" right
+                                // where the treasurer is about to type the figure.
+                                ->helperText(function (Get $get): ?string {
+                                    $paid = self::contributedSoFar(
+                                        $get('user_id') ? (int) $get('user_id') : null,
+                                        $get('account_id') ? (int) $get('account_id') : null,
+                                    );
 
-                    // Payment Mode Configuration
-                    Fieldset::make('Payment Mode')
-                        ->schema([
-                            ToggleButtons::make('from_savings')
-                                ->label('Do you want to deduct from the member\'s savings account?')
-                                ->boolean() // Treat as a boolean
-                                ->default(false) // Default to false
-                                ->inline()
-                                ->grouped()
-                                ->reactive()
-                                ->columnSpanFull(),
+                                    return $paid === null
+                                        ? 'Pick a member and a fund to see what they have paid so far.'
+                                        : 'Paid into this fund so far: ' . Money::kes($paid);
+                                })
+                                ->columnSpan(['default' => 12, 'md' => 3]),
+
+                            Select::make('payment_source')
+                                ->label('Paid by')
+                                ->options(fn () => PaymentMode::externalOptions() + [
+                                    PaymentMode::From_Savings->value => PaymentMode::From_Savings->getLabel(),
+                                ])
+                                ->default(PaymentMode::Mobile_Money->value)
+                                ->native(false)
+                                ->searchable()
+                                ->required()
+                                ->helperText(fn ($state) => $state === PaymentMode::From_Savings->value
+                                    ? 'Deducted from savings they already hold with the group.'
+                                    : null)
+                                // Arrears are, by definition, money that has not
+                                // been paid by any means — so the question is hidden.
+                                ->visible(fn (Get $get) => $get('../../entry_type') !== self::ENTRY_ARREARS)
+                                ->columnSpan(['default' => 12, 'md' => 3]),
                         ])
-                ])
-                ->columnSpanFull(),
+                        ->columnSpanFull(),
+
+                    // The batch total. Posting a meeting's collections against a
+                    // cash tin or an M-PESA statement means checking one number,
+                    // and there was previously nowhere to check it.
+                    Placeholder::make('batch_total')
+                        ->label('Total for this batch')
+                        ->content(function (Get $get): HtmlString {
+                            $entries = collect($get('entries') ?? []);
+
+                            $total = $entries->sum(fn ($row) => (float) ($row['amount_contributed'] ?? 0));
+                            $count = $entries->filter(fn ($row) => filled($row['user_id'] ?? null))->count();
+                            $isArrears = $get('entry_type') === self::ENTRY_ARREARS;
+
+                            return new HtmlString(sprintf(
+                                '<span class="text-lg font-semibold %s">%s</span>
+                                 <span class="text-sm text-gray-500"> across %d %s%s</span>',
+                                $isArrears ? 'text-danger-600' : 'text-success-600',
+                                e(Money::kes($total)),
+                                $count,
+                                $count === 1 ? 'entry' : 'entries',
+                                $isArrears ? ', recorded as money owed' : '',
+                            ));
+                        }),
+                ]),
         ];
+    }
+
+    /**
+     * A one-line summary for a collapsed repeater row, so a long batch stays
+     * readable without expanding every row.
+     */
+    protected static function describeRow(array $state): ?string
+    {
+        $name = $state['user_id']
+            ? User::find($state['user_id'])?->name
+            : null;
+
+        if (! $name) {
+            return null;
+        }
+
+        $fund = $state['account_id'] ? Account::find($state['account_id'])?->name : null;
+        $amount = $state['amount_contributed'] ?? null;
+
+        return trim(sprintf(
+            '%s%s%s',
+            $name,
+            $fund ? ' — ' . $fund : '',
+            is_numeric($amount) ? ' · ' . Money::kes($amount) : '',
+        ));
     }
 
 

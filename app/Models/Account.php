@@ -2,23 +2,20 @@
 
 namespace App\Models;
 
-use App\Enums\FrequencyTypeEnum;
-use App\Enums\MemberStatus;
-use Filament\Forms\Components\Fieldset;
-use Filament\Forms\Components\Radio;
-use Filament\Forms\Components\Repeater;
 use Filament\Forms\Components\Section;
-use Filament\Forms\Components\Select;
-use Filament\Forms\Components\Textarea;
 use Filament\Forms\Components\TextInput;
-use Filament\Forms\Components\ToggleButtons;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
-use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use SebastianBergmann\CodeCoverage\Report\Xml\Report;
 
+/**
+ * A fund the group collects into — Bereavement, Insurance, Administration, and
+ * so on. Called an "Account" in the schema; shown to users as a "Fund",
+ * because "account" already means three other things to a SACCO member (their
+ * savings account, a bank account, their login).
+ */
 class Account extends Model
 {
     use HasFactory;
@@ -33,12 +30,30 @@ class Account extends Model
         return $this->hasMany(Report::class);
     }
 
-    public function receivables()
+    public function receivables(): HasMany
     {
         return $this->hasMany(Receivable::class);
     }
 
-    public function users()
+    public function payables(): HasMany
+    {
+        return $this->hasMany(Payable::class);
+    }
+
+    public function debts(): HasMany
+    {
+        return $this->hasMany(Debt::class);
+    }
+
+    /**
+     * The running total each member has put into this fund.
+     */
+    public function collections(): HasMany
+    {
+        return $this->hasMany(AccountCollection::class);
+    }
+
+    public function users(): BelongsToMany
     {
         return $this->belongsToMany(User::class, 'account_user')
             ->using(AccountUser::class);
@@ -50,13 +65,26 @@ class Account extends Model
             ->using(AccountYear::class);
     }
 
+    public function getTotalCollectedAttribute(): float
+    {
+        return (float) $this->collections()->sum('amount');
+    }
+
     public static function getForm(): array
     {
         return [
-            TextInput::make('name')
-                ->required()
-                ->label('Name of account')
-                ->maxLength(255),
+            Section::make('Fund details')
+                ->description('Funds are the pots money is collected into. Members contribute to a fund, and group expenses are paid out of one.')
+                ->icon('heroicon-o-rectangle-group')
+                ->schema([
+                    TextInput::make('name')
+                        ->label('Fund name')
+                        ->placeholder('e.g. Bereavement')
+                        ->helperText('Use a name members will recognise on their statement.')
+                        ->required()
+                        ->maxLength(255)
+                        ->unique(ignoreRecord: true),
+                ]),
         ];
     }
 }

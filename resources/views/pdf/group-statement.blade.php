@@ -1,170 +1,155 @@
+{{--
+    Group statement, for printing.
+
+    The data now arrives from the page rather than being recomputed here by
+    instantiating the page class a second time, and amounts are right-aligned
+    so the columns read as money on paper too.
+--}}
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Group Statement</title>
     <style>
         @page {
             size: A4 landscape;
-            margin: 20mm;
+            margin: 12mm;
         }
 
         body {
-            font-family: Arial, sans-serif;
-            font-size: 12px;
-            color: #333;
+            font-family: "DejaVu Sans", Arial, sans-serif;
+            font-size: 10px;
+            color: #1f2937;
             margin: 0;
             padding: 0;
-            position: relative;
-        }
-
-        .watermark {
-            -webkit-transform: rotate(331deg);
-            -moz-transform: rotate(331deg);
-            -o-transform: rotate(331deg);
-            transform: rotate(331deg) translate(-50%, -50%);
-            font-size: 12em;
-            color: rgba(255, 5, 5, 0.17);
-            position: absolute;
-            font-family: 'Denk One', sans-serif;
-            text-transform: uppercase;
-            left: 50%;
-            top: 50%;
-            padding-left: 0; /* Remove padding */
-            padding-top: 0;  /* Remove padding */
         }
 
         .header {
-            margin-bottom: 20px;
-            text-align: center;
+            border-bottom: 2px solid #0f766e;
+            padding-bottom: 8px;
+            margin-bottom: 14px;
         }
 
-        .header h2 {
+        .header h1 {
             font-size: 16px;
-            margin: 0;
-            text-transform: uppercase;
+            margin: 0 0 2px;
+            color: #0f766e;
         }
 
         .header p {
-            font-size: 12px;
+            font-size: 9px;
             margin: 0;
-            color: #666;
+            color: #6b7280;
         }
 
-        .table {
+        table {
             width: 100%;
             border-collapse: collapse;
-            margin-top: 20px;
         }
 
-        .table th, .table td {
-            border: 1px solid #ddd;
-            padding: 8px;
-            text-align: left;
-            font-size: 10px;
+        th, td {
+            border: 1px solid #e5e7eb;
+            padding: 5px 6px;
+            font-size: 9px;
         }
 
-        .table th {
-            background-color: #f4f4f4;
+        thead th {
+            background-color: #f1f5f9;
             font-weight: bold;
             text-transform: uppercase;
-            color: #555;
+            color: #475569;
+            font-size: 8px;
+            letter-spacing: 0.04em;
         }
 
-        .table tbody tr:nth-child(even) {
-            background-color: #f9f9f9;
+        /* Names read left; money reads right. */
+        th.name, td.name {
+            text-align: left;
         }
 
-        .table tbody tr:nth-child(odd) {
-            background-color: #ffffff;
+        th.amount, td.amount {
+            text-align: right;
+        }
+
+        tbody tr:nth-child(even) {
+            background-color: #f8fafc;
+        }
+
+        tfoot td, tfoot th {
+            background-color: #f1f5f9;
+            font-weight: bold;
+        }
+
+        .owing {
+            color: #be123c;
         }
 
         .footer {
-            margin-top: 20px;
+            margin-top: 12px;
             text-align: center;
-            font-size: 10px;
-            color: #999;
+            font-size: 8px;
+            color: #9ca3af;
         }
     </style>
 </head>
 <body>
-<!-- Watermark -->
-<div class="watermark">GULF</div>
+
+@php use App\Support\Money; @endphp
 
 <div class="header">
-    <h2>Gulf Group Statement</h2>
-    <p>Date: {{ now()->format('F j, Y g:i A') }}</p>
-    <p>Monetary values are provided in Kenyan Shillings (KES).</p>
+    <h1>{{ config('app.name', 'Glof Finance') }} — Group Statement</h1>
+    <p>
+        As at {{ now()->format('j F Y, g:i A') }}.
+        All amounts in Kenyan Shillings (KES), rounded to the nearest 5 cents.
+    </p>
 </div>
 
-@php
-    use App\Support\Money;
-
-    // Fetch data and accounts:
-    [$tableData, $accounts] = (new \App\Filament\Pages\StaticReadOnlyTable)->getTableData();
-
-    // Initialize and compute totals:
-    $totals = collect();
-
-    foreach ($tableData as $row) {
-        foreach ($row as $column => $value) {
-            if (is_numeric($value)) {
-                $totals[$column] = ($totals[$column] ?? 0) + (float) $value;
-            }
-        }
-    }
-@endphp
-
-<table class="table">
+<table>
     <thead>
     <tr>
-        <th>Member Name</th>
-        <th>Registration Fee</th>
+        <th class="name">Member</th>
         @foreach ($accounts as $account)
-            <th>{{ $account->name }}</th>
+            <th class="amount">{{ $account->name }}</th>
         @endforeach
-        <th>Loan</th>
-        <th>Savings</th>
-        <th>Net Worth</th>
+        <th class="amount">Joining fee</th>
+        <th class="amount">Loan owing</th>
+        <th class="amount">Savings</th>
+        <th class="amount">Net worth</th>
     </tr>
     </thead>
+
     <tbody>
-    @foreach ($tableData as $row)
+    @foreach ($rows as $row)
         <tr>
-            <td>{{ $row['User'] }}</td>
-            <td>{{ Money::format05($row['Registration Fee'] ?? 0) }}</td>
+            <td class="name">{{ $row['name'] }}</td>
             @foreach ($accounts as $account)
-                <td>{{ Money::format05($row[$account->name] ?? 0) }}</td>
+                <td class="amount">{{ Money::format05($row['funds'][$account->id] ?? 0) }}</td>
             @endforeach
-            <td>{{ Money::format05($row['Loan'] ?? 0) }}</td>
-            <td>{{ Money::format05($row['Savings'] ?? 0) }}</td>
-            <td>{{ Money::format05($row['Net Worth'] ?? 0) }}</td>
+            <td class="amount">{{ Money::format05($row['registration_fee']) }}</td>
+            <td class="amount {{ $row['loan'] > 0 ? 'owing' : '' }}">{{ Money::format05($row['loan']) }}</td>
+            <td class="amount">{{ Money::format05($row['savings']) }}</td>
+            <td class="amount">{{ Money::format05($row['net_worth']) }}</td>
         </tr>
     @endforeach
     </tbody>
 
-    <!-- Totals Row -->
     <tfoot>
     <tr>
-        <th>Totals</th>
-        <td>
-            <strong>
-                {{ Money::format05($totals['Registration Fee'] ?? 0) }}
-            </strong>
-        </td>
+        <th class="name">Group total</th>
         @foreach ($accounts as $account)
-            <td><strong>{{ Money::format05($totals[$account->name] ?? 0) }}</strong></td>
+            <td class="amount">{{ Money::format05($totals['funds'][$account->id] ?? 0) }}</td>
         @endforeach
-        <td><strong>{{ Money::format05($totals['Loan'] ?? 0) }}</strong></td>
-        <td><strong>{{ Money::format05($totals['Savings'] ?? 0) }}</strong></td>
-        <td><strong>{{ Money::format05($totals['Net Worth'] ?? 0) }}</strong></td>
+        <td class="amount">{{ Money::format05($totals['registration_fee']) }}</td>
+        <td class="amount">{{ Money::format05($totals['loan']) }}</td>
+        <td class="amount">{{ Money::format05($totals['savings']) }}</td>
+        <td class="amount">{{ Money::format05($totals['net_worth']) }}</td>
     </tr>
     </tfoot>
 </table>
 
 <div class="footer">
-    <p>Generated on {{ now()->format('F j, Y g:i A') }} by {{auth()->user()->name}} | Glof Group Statement </p>
+    Generated {{ now()->format('j F Y, g:i A') }} by {{ auth()->user()?->name ?? 'the system' }}
 </div>
+
 </body>
 </html>

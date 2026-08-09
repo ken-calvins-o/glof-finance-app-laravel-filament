@@ -3,135 +3,222 @@
 namespace App\Filament\Resources;
 
 use App\Enums\DebtStatusEnum;
-use App\Enums\PaymentMode;
+use App\Filament\Actions\RecordRepaymentAction;
+use App\Filament\Concerns\RestrictsToOwnRecords;
+use App\Filament\Navigation;
 use App\Filament\Resources\DebtResource\Pages;
+use App\Filament\Tables\Columns\MoneyColumn;
 use App\Models\Debt;
 use App\Services\DebtInterestService;
-use Filament\Forms;
+use App\Support\Money;
 use Filament\Forms\Form;
 use Filament\Notifications\Notification;
 use Filament\Resources\Resource;
 use Filament\Tables;
 use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Builder;
-use Illuminate\Database\Eloquent\SoftDeletingScope;
 use pxlrbt\FilamentExcel\Actions\Tables\ExportBulkAction;
 
 class DebtResource extends Resource
 {
+    use RestrictsToOwnRecords;
+
     protected static ?string $model = Debt::class;
 
-    protected static ?string $navigationIcon = 'heroicon-o-credit-card';
+    protected static ?string $navigationIcon = 'heroicon-o-scale';
 
-    protected static ?string $navigationGroup = 'Liabilities';
+    protected static ?string $activeNavigationIcon = 'heroicon-s-scale';
 
+    protected static ?string $navigationGroup = Navigation::LENDING;
+
+    protected static ?int $navigationSort = 2;
+
+    /*
+    | "Debts" names the record; "Money owed" names what the treasurer is looking
+    | at when they open it.
+    */
+    protected static ?string $navigationLabel = 'Money owed';
+
+    protected static ?string $modelLabel = 'debt';
+
+    protected static ?string $pluralModelLabel = 'money owed';
+
+    /**
+     * The count of members currently behind — an actionable number, unlike the
+     * total row count the badge used to show.
+     */
     public static function getNavigationBadge(): ?string
     {
-        return Debt::count();
+        if (! auth()->user()?->isAdmin()) {
+            return null;
+        }
+
+        $count = static::getModel()::query()
+            ->whereIn('debt_status', DebtStatusEnum::outstandingValues())
+            ->where('outstanding_balance', '>', 0)
+            ->count();
+
+        return $count > 0 ? (string) $count : null;
+    }
+
+    public static function getNavigationBadgeColor(): ?string
+    {
+        return 'danger';
+    }
+
+    public static function getNavigationBadgeTooltip(): ?string
+    {
+        return 'Debts still to be repaid';
+    }
+
+    public static function getGloballySearchableAttributes(): array
+    {
+        return ['user.name', 'account.name'];
+    }
+
+    protected static function baseEloquentQuery(): Builder
+    {
+        return parent::getEloquentQuery()->with(['user', 'account']);
+    }
+
+    /**
+     * Debts are never created by hand — they appear when a loan is issued or
+     * arrears are recorded. Offering a "New debt" button would only produce
+     * records with nothing behind them.
+     */
+    public static function canCreate(): bool
+    {
+        return false;
     }
 
     public static function form(Form $form): Form
     {
-        return $form
-            ->schema(Debt::getForm());
+        return $form->schema(Debt::getForm());
     }
 
     public static function table(Table $table): Table
     {
         return $table
             ->persistFiltersInSession()
-            ->filtersTriggerAction(function ($action) {
-                return $action->button()->label('Filter');
-            })
+            ->defaultSort('outstanding_balance', 'desc')
+            ->filtersTriggerAction(fn ($action) => $action->button()->label('Filter'))
+            ->emptyStateIcon('heroicon-o-check-badge')
+            ->emptyStateHeading('Nothing is owed')
+            ->emptyStateDescription('Debts appear here automatically when a loan is issued or when arrears are recorded against a member.')
             ->columns([
                 Tables\Columns\ImageColumn::make('avatar')
+                    ->label('')
                     ->circular()
-                    ->label('Photo')
-                    ->defaultImageUrl(function ($record) {
-                        return 'https://ui-avatars.com/api/?background=EA580C&color=fff&name=' . urlencode($record->user->name);
-                    }),
+                    ->size(32)
+                    ->getStateUsing(fn (Debt $record) => $record->user?->avatar_url),
+
                 Tables\Columns\TextColumn::make('user.name')
                     ->label('Member')
+                    ->weight('medium')
                     ->searchable()
                     ->sortable(),
+
                 Tables\Columns\TextColumn::make('account.name')
-                    ->label('Account')
-                    ->searchable()
-                    ->sortable()
-                    ->getStateUsing(function ($record) {
-                        // Check if the 'account.name' is null or empty and return 'Credited Loan'
-                        return $record->account->name ?? 'Credited Loan';
-                    }),
-                Tables\Columns\TextColumn::make('outstanding_balance')
-                    ->prefix('Kes ')
-                    ->formatStateUsing(fn($state) => number_format($state, 2))
-                    ->searchable(),
-                Tables\Columns\TextColumn::make('debt_status')
-                    ->label('Debt Status')
+                    ->label('Owed on')
                     ->badge()
+                    ->color('gray')
+                    // A debt with no fund is a loan. Saying "Loan" beats the
+                    // internal phrase "Credited Loan", which meant nothing to
+                    // anyone who had not read the schema.
+                    ->getStateUsing(fn (Debt $record) => $record->account?->name ?? 'Loan')
                     ->searchable()
-                    ->sortable()
-                    ->color(function ($state) {
-                        return $state->getColor();
-                    }),
-                Tables\Columns\TextColumn::make('created_at')
-                    ->dateTime()
-                    ->sortable()
-                    ->toggleable(isToggledHiddenByDefault: true),
-                Tables\Columns\TextColumn::make('updated_at')
-                    ->dateTime()
-                    ->sortable()
+                    ->sortable(),
+
+                MoneyColumn::withTotal('outstanding_balance', 'Still owing'),
+
+                Tables\Columns\TextColumn::make('debt_status')
+                    ->label('Status')
+                    ->badge()
+                    ->formatStateUsing(fn ($state) => $state->getLabel())
+                    ->icon(fn ($state) => $state->getIcon())
+                    ->color(fn ($state) => $state->getColor())
+                    ->searchable()
+                    ->sortable(),
+
+                Tables\Columns\TextColumn::make('last_interest_applied_on')
+                    ->label('Interest last added')
+                    ->date('j M Y')
+                    ->placeholder('Never')
                     ->toggleable(isToggledHiddenByDefault: true),
 
+                Tables\Columns\TextColumn::make('created_at')
+                    ->label('Owing since')
+                    ->date('j M Y')
+                    ->sortable()
+                    ->toggleable(isToggledHiddenByDefault: true),
             ])
             ->filters([
-                Tables\Filters\SelectFilter::make('debt_status')
-                    ->label('Debt Status')
+                Tables\Filters\SelectFilter::make('user_id')
+                    ->relationship('user', 'name')
+                    ->label('Member')
                     ->multiple()
                     ->searchable()
-                    ->options(collect(DebtStatusEnum::cases())->mapWithKeys(function ($case) {
-                        return [$case->value => ucwords(str_replace('_', ' ', $case->value))];
-                    }))
-                    ->preload(),
+                    ->preload()
+                    ->visible(fn () => (bool) auth()->user()?->isAdmin()),
+
+                // "Still owing" and "settled" live in the page's tabs, so they
+                // are deliberately not repeated here as filters.
+                Tables\Filters\SelectFilter::make('debt_status')
+                    ->label('Status')
+                    ->multiple()
+                    ->options(DebtStatusEnum::options()),
             ])
             ->actions([
-                Tables\Actions\EditAction::make()->visible(fn($record) => $record->debt_status !== DebtStatusEnum::Cleared),
+                // The one-field modal, so a repayment no longer requires
+                // opening a full edit page.
+                RecordRepaymentAction::make(),
+
+                Tables\Actions\EditAction::make()
+                    ->label('Open')
+                    ->icon('heroicon-o-arrow-top-right-on-square')
+                    ->color('gray')
+                    ->visible(fn (Debt $record) => $record->debt_status !== DebtStatusEnum::Cleared
+                        && (bool) auth()->user()?->isAdmin()),
             ])
             ->bulkActions([
                 Tables\Actions\BulkActionGroup::make([
                     Tables\Actions\BulkAction::make('apply_monthly_interest')
-                        ->label('Apply Monthly Interest')
+                        ->label('Add this month’s interest')
                         ->icon('heroicon-o-percent-badge')
                         ->color('warning')
                         ->requiresConfirmation()
-                        ->modalHeading('Apply monthly interest to selected debts?')
-                        ->modalDescription('This will apply the configured monthly interest (default 1%) only to the selected debts that have an outstanding balance.')
+                        ->modalIcon('heroicon-o-percent-badge')
+                        ->modalHeading('Add monthly interest to the selected debts?')
+                        ->modalDescription('Adds 1% to every selected debt that still has a balance, and records it as group income. Debts already cleared are skipped. This normally runs by itself on the 1st of each month — use this only to catch up.')
+                        ->modalSubmitActionLabel('Add interest')
                         ->action(function ($records) {
-                            $ids = $records->pluck('id');
-
                             $stats = app(DebtInterestService::class)
-                                ->applyMonthlyInterestToDebtIds($ids);
+                                ->applyMonthlyInterestToDebtIds($records->pluck('id'));
 
                             Notification::make()
-                                ->title('Monthly interest applied')
-                                ->body(
-                                    "Processed: {$stats['processed']} | Errors: {$stats['errors']} | Total interest: Kes " . number_format($stats['total_interest'], 2)
-                                )
+                                ->title('Monthly interest added')
+                                ->body(sprintf(
+                                    '%d %s updated, %s of interest charged.%s',
+                                    $stats['processed'],
+                                    $stats['processed'] === 1 ? 'debt' : 'debts',
+                                    Money::kes($stats['total_interest']),
+                                    $stats['errors'] > 0 ? sprintf(' %d could not be processed.', $stats['errors']) : '',
+                                ))
+                                ->color($stats['errors'] > 0 ? 'warning' : 'success')
                                 ->success()
                                 ->send();
                         })
-                        ->deselectRecordsAfterCompletion(),
-                    Tables\Actions\DeleteBulkAction::make(),
-                    ExportBulkAction::make(),
+                        ->deselectRecordsAfterCompletion()
+                        ->visible(fn () => (bool) auth()->user()?->isAdmin()),
+
+                    ExportBulkAction::make()->label('Download as Excel'),
                 ]),
             ]);
     }
 
     public static function getRelations(): array
     {
-        return [
-            //
-        ];
+        return [];
     }
 
     public static function getPages(): array

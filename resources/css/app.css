@@ -1,4 +1,90 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
-@tailwind variants;
+/*
+| Glof Finance — panel theme
+|
+| This file is the Filament panel's stylesheet (registered via ->viteTheme()).
+| It imports Filament's own theme first, then layers on the handful of rules
+| that make a money app readable. The goal is not decoration: every rule below
+| exists to answer "can the treasurer read this number correctly, quickly?"
+*/
+
+@import '../../vendor/filament/filament/resources/css/theme.css';
+
+@config '../../tailwind.config.js';
+
+@layer base {
+    /*
+    | Money is read by comparing columns of digits. Proportional figures make
+    | 111.00 narrower than 999.00, which breaks that scan. Tabular figures keep
+    | every digit the same width so amounts line up down the column.
+    */
+    .fi-ta-table,
+    .fi-in-text,
+    .fi-wi-stats-overview-stat-value {
+        font-variant-numeric: tabular-nums;
+        font-feature-settings: 'tnum';
+    }
+
+    /* A slightly cooler page ground so white cards read as raised surfaces. */
+    .fi-body {
+        @apply bg-gray-50 dark:bg-gray-950;
+    }
+}
+
+@layer components {
+    /*
+    | Sidebar group headings: the old panel rendered them at the same weight as
+    | the links themselves, so the grouping did no work. Quieter and smaller
+    | lets the eye jump straight to the links.
+    */
+    .fi-sidebar-group-label {
+        @apply text-[0.6875rem] font-semibold uppercase tracking-wider text-gray-400 dark:text-gray-500;
+    }
+
+    /* Give the active nav item a solid anchor rather than a faint tint. */
+    .fi-sidebar-item-active .fi-sidebar-item-button {
+        @apply bg-primary-50 dark:bg-primary-500/10;
+    }
+
+    /*
+    | Amounts are right-aligned wherever we opt in with ->alignEnd(), and this
+    | keeps their header aligned with them, which Filament does not do by
+    | default for custom-formatted (non-numeric) columns.
+    */
+    .fi-ta-header-cell-align-end .fi-ta-header-cell-label {
+        @apply text-end;
+    }
+
+    /*
+    | Stat cards carry the headline numbers on the dashboard. Tightening the
+    | value and letting the description breathe makes the hierarchy obvious at
+    | a glance: number first, context second.
+    */
+    /*
+    | Full precision matters on a money stat — "KES 445.0K" is not something a
+    | treasurer can read a figure out of in a meeting. So the value stays exact
+    | and the type shrinks instead, sized so that a seven-figure amount still
+    | sits on one line in a quarter-width card.
+    */
+    .fi-wi-stats-overview-stat-value {
+        @apply whitespace-nowrap text-xl font-semibold tracking-tight;
+    }
+
+    .fi-wi-stats-overview-stat-label {
+        @apply text-sm font-medium text-gray-500 dark:text-gray-400;
+    }
+
+    /*
+    | Section headers inside forms: the original forms nested Fieldset inside
+    | Fieldset inside Section, producing three visible boxes around one field.
+    | The redesign uses a single Section per decision, so its heading needs to
+    | carry more weight.
+    */
+    .fi-fo-section-header-heading {
+        @apply text-base font-semibold;
+    }
+
+    /* Wizard steps read as progress, so let the completed ones recede. */
+    .fi-fo-wizard-header-step-icon-ctn {
+        @apply shrink-0;
+    }
+}

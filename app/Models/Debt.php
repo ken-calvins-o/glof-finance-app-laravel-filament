@@ -3,15 +3,17 @@
 namespace App\Models;
 
 use App\Enums\DebtStatusEnum;
-use Filament\Forms\Components\Fieldset;
+use App\Services\DebtRepaymentService;
+use App\Support\Money;
+use Filament\Forms\Components\Placeholder;
 use Filament\Forms\Components\Section;
-use Filament\Forms\Components\Select;
 use Filament\Forms\Components\TextInput;
 use Filament\Forms\Components\ToggleButtons;
+use Filament\Forms\Get;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
-use Filament\Notifications\Notification;
+use Illuminate\Support\HtmlString;
 
 class Debt extends Model
 {
@@ -49,65 +51,80 @@ class Debt extends Model
         }
     }
 
+    /**
+     * Recording a repayment on the debt's own page.
+     *
+     * The old form opened with three disabled inputs — member, fund and
+     * outstanding balance — before reaching the single field the treasurer came
+     * to fill in. Read-only facts are not form fields, so they are now shown as
+     * text, and the page is down to the two questions that actually have
+     * answers: how much, and where from.
+     *
+     * The amount is validated against the balance. Previously typing too much
+     * only raised a warning notification and let you submit anyway, at which
+     * point the save failed with an unhandled exception.
+     */
     public static function getForm(): array
     {
         return [
-            Section::make('Debt Repayment')
-                ->icon('heroicon-s-pencil-square')
-                ->columns(['md' => 2, 'lg' => 2])
+            Section::make('The debt')
+                ->icon('heroicon-o-scale')
+                ->columns(3)
                 ->schema([
-                    Fieldset::make('Member & Account Information')->schema([
-                        Select::make('user_id')
-                            ->relationship('user', 'name')
-                            ->label('Contributor')
-                            ->disabled()
-                            ->required(),
-                        Select::make('account_id')
-                            ->relationship('account', 'name')
-                            ->label('Account Name')
-                            ->disabled(),
-                    ]),
-                    Fieldset::make('Debt Overview')
-                        ->schema([
-                            TextInput::make('outstanding_balance')
-                                ->label('Outstanding balance')
-                                ->required()
-                                ->numeric()
-                                ->disabled()
-                                ->hintIcon('heroicon-o-currency-dollar')
-                                ->prefix('Kes')
-                                ->minValue(1),
-                            TextInput::make('repayment_amount')
-                                ->label('Enter Amount')
-                                ->required()
-                                ->numeric()
-                                ->reactive()
-                                ->hintIcon('heroicon-o-currency-dollar')
-                                ->prefix('Kes')
-                                ->minValue(1)
-                                ->afterStateUpdated(function (callable $get, $state) {
-                                    // Show a live Filament notification if the repayment exceeds outstanding balance
-                                    $outstanding = $get('outstanding_balance') ?? 0;
-                                    if (!is_null($state) && is_numeric($state) && $state > $outstanding) {
-                                        Notification::make()
-                                            ->warning()
-                                            ->title('Repayment exceeds outstanding')
-                                            ->body('The repayment amount entered is greater than the current outstanding balance. Please enter a smaller amount.')
-                                            ->send();
-                                    }
-                                }),
-                        ]),
+                    Placeholder::make('member')
+                        ->label('Member')
+                        ->content(fn (?Debt $record) => $record?->user?->name ?? '—'),
 
-                    Fieldset::make('Payment Mode')
-                        ->schema([
-                            ToggleButtons::make('from_savings')
-                                ->boolean()
-                                ->label('Do you want to repay from the member\'s savings account?')
-                                ->default(false)
-                                ->inline()
-                                ->grouped()
-                                ->columnSpanFull(),
-                        ]),
+                    Placeholder::make('owed_on')
+                        ->label('Owed on')
+                        ->content(fn (?Debt $record) => $record?->account?->name ?? 'Loan'),
+
+                    Placeholder::make('balance')
+                        ->label('Outstanding balance')
+                        ->content(fn (?Debt $record) => new HtmlString(
+                            '<span class="text-lg font-semibold text-danger-600">'
+                            . e(Money::kes($record?->outstanding_balance ?? 0))
+                            . '</span>'
+                        )),
+                ]),
+
+            Section::make('Record a repayment')
+                ->description('Enter what the member has actually paid. Part payments are fine.')
+                ->icon('heroicon-o-banknotes')
+                ->columns(2)
+                ->schema([
+                    TextInput::make('repayment_amount')
+                        ->label('Amount repaid')
+                        ->prefix('KES')
+                        ->numeric()
+                        ->required()
+                        ->minValue(0.01)
+                        // Real validation, rather than a notification that did
+                        // not stop the form from submitting.
+                        ->maxValue(fn (?Debt $record) => (float) ($record?->outstanding_balance ?? 0))
+                        ->validationMessages([
+                            'max' => 'That is more than this member owes.',
+                        ])
+                        ->live(onBlur: true),
+
+                    ToggleButtons::make('from_savings')
+                        ->label('Where is the money coming from?')
+                        ->boolean('Their savings', 'A fresh payment')
+                        ->default(false)
+                        ->inline()
+                        ->grouped()
+                        ->live(),
+
+                    Placeholder::make('effect')
+                        ->label('What this will do')
+                        ->content(fn (?Debt $record, Get $get) => $record
+                            ? (app(DebtRepaymentService::class)->describe(
+                                $record,
+                                is_numeric($get('repayment_amount')) ? (float) $get('repayment_amount') : null,
+                                (bool) $get('from_savings'),
+                            ) ?? 'Enter an amount to see the effect.')
+                            : null)
+                        ->columnSpanFull(),
                 ]),
         ];
     }
