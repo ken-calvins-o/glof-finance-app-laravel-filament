@@ -10,10 +10,19 @@ class ListReceivables extends ListRecords
 {
     protected static string $resource = ReceivableResource::class;
 
+    public function getSubheading(): ?string
+    {
+        return auth()->user()?->isAdmin()
+            ? 'Every payment the group has received from members.'
+            : 'Everything you have paid into the group.';
+    }
+
     protected function getHeaderActions(): array
     {
         return [
-            Actions\CreateAction::make(),
+            Actions\CreateAction::make()
+                ->label('Record money in')
+                ->icon('heroicon-o-plus'),
         ];
     }
 }

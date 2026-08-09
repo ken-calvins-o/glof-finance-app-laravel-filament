@@ -2,9 +2,14 @@
 
 namespace App\Filament\Resources;
 
-use App\Filament\Resources\LoanResource\Pages;
-use App\Models\Loan;
 use App\Enums\DebtStatusEnum;
+use App\Filament\Concerns\RestrictsToOwnRecords;
+use App\Filament\Navigation;
+use App\Filament\Resources\LoanResource\Pages;
+use App\Filament\Tables\Columns\MoneyColumn;
+use App\Models\Debt;
+use App\Models\Loan;
+use App\Support\Money;
 use Filament\Forms\Form;
 use Filament\Resources\Resource;
 use Filament\Tables;
@@ -13,120 +18,192 @@ use Illuminate\Database\Eloquent\Builder;
 
 class LoanResource extends Resource
 {
+    use RestrictsToOwnRecords;
+
     protected static ?string $model = Loan::class;
 
+    protected static ?string $navigationIcon = 'heroicon-o-hand-raised';
+
+    protected static ?string $activeNavigationIcon = 'heroicon-s-hand-raised';
+
+    protected static ?string $navigationGroup = Navigation::LENDING;
+
+    protected static ?int $navigationSort = 1;
+
+    protected static ?string $navigationLabel = 'Loans issued';
+
+    protected static ?string $modelLabel = 'loan';
+
+    /**
+     * How much the group currently has lent out — the number that decides
+     * whether another loan can be issued this month.
+     */
     public static function getNavigationBadge(): ?string
     {
-        return Loan::count();
+        if (! auth()->user()?->isAdmin()) {
+            return null;
+        }
+
+        $out = Debt::whereIn('debt_status', DebtStatusEnum::outstandingValues())
+            ->whereNull('account_id')
+            ->sum('outstanding_balance');
+
+        return $out > 0 ? Money::compact($out) : null;
     }
 
-    protected static ?string $navigationIcon = 'heroicon-o-arrow-right-end-on-rectangle';
-    protected static ?string $navigationGroup = 'Liabilities';
+    public static function getNavigationBadgeColor(): ?string
+    {
+        return 'warning';
+    }
+
+    public static function getNavigationBadgeTooltip(): ?string
+    {
+        return 'Currently out on loan';
+    }
+
+    public static function getGloballySearchableAttributes(): array
+    {
+        return ['user.name', 'description'];
+    }
 
     public static function form(Form $form): Form
     {
-        return $form
-            ->schema(Loan::getForm());
+        return $form->schema(Loan::getForm());
     }
 
     public static function table(Table $table): Table
     {
         return $table
             ->persistFiltersInSession()
-            ->filtersTriggerAction(function ($action) {
-                return $action->button()->label('Filter');
-            })
+            ->defaultSort('created_at', 'desc')
+            ->filtersTriggerAction(fn ($action) => $action->button()->label('Filter'))
+            ->emptyStateIcon('heroicon-o-hand-raised')
+            ->emptyStateHeading('No loans issued yet')
+            ->emptyStateDescription('When the group lends money to a member, record it here so the repayment is tracked automatically.')
+            ->emptyStateActions([
+                Tables\Actions\CreateAction::make()->label('Issue a loan'),
+            ])
             ->columns([
                 Tables\Columns\ImageColumn::make('avatar')
+                    ->label('')
                     ->circular()
-                    ->label('Photo')
-                    ->defaultImageUrl(function ($record) {
-                        return 'https://ui-avatars.com/api/?background=EA580C&color=fff&name=' . urlencode($record->user->name);
-                    }),
+                    ->size(32)
+                    ->getStateUsing(fn (Loan $record) => $record->user?->avatar_url),
+
                 Tables\Columns\TextColumn::make('user.name')
-                    ->label('Name')
+                    ->label('Member')
+                    ->weight('medium')
+                    ->description(fn (Loan $record) => $record->description)
                     ->searchable()
                     ->sortable(),
-                Tables\Columns\TextColumn::make('amount')
-                    ->prefix('Kes ')
-                    ->formatStateUsing(fn($state) => number_format($state, 2))
-                    ->searchable(),
-                Tables\Columns\TextColumn::make('balance')
-                    ->label('Balance')
-                    ->prefix('Kes ')
-                    ->getStateUsing(function ($record) {
-                        // Prefer eager-loaded debts when available
-                        $debt = null;
 
-                        if (isset($record->user) && isset($record->user->debts) && $record->user->debts->count()) {
-                            $debt = $record->user->debts->first();
-                        } else {
-                            // Fallback to direct query: find the most recent Debt for the user with no account ("Credited Loan")
-                            $debt = \App\Models\Debt::where('user_id', $record->user_id)
+                MoneyColumn::make('amount', 'Borrowed'),
+
+                Tables\Columns\TextColumn::make('balance')
+                    ->label('Still owing')
+                    ->alignEnd()
+                    ->weight('medium')
+                    ->color(fn ($state) => (float) $state > 0 ? 'danger' : 'success')
+                    ->getStateUsing(function (Loan $record) {
+                        // The live figure lives on the member's credited-loan
+                        // debt; the loan's own balance is the starting point.
+                        $debt = $record->user?->debts?->first()
+                            ?? Debt::where('user_id', $record->user_id)
                                 ->whereNull('account_id')
                                 ->orderByDesc('created_at')
                                 ->first();
-                        }
 
-                        $amount = $debt ? $debt->outstanding_balance : ($record->balance ?? 0);
-
-                        // Ensure non-negative and return formatted string (state expected to be raw value; we'll format here)
-                        $amount = max(0, $amount);
-
-                        return number_format($amount, 2);
+                        return max(0, (float) ($debt->outstanding_balance ?? $record->balance ?? 0));
                     })
-                    ->searchable(),
+                    ->formatStateUsing(fn ($state) => Money::kes($state)),
+
                 Tables\Columns\TextColumn::make('interest')
-                    ->searchable()
-                    ->label('Interest P.M.%'),
+                    ->label('Rate')
+                    ->alignEnd()
+                    ->formatStateUsing(fn ($state, Loan $record) => $record->apply_interest
+                        ? rtrim(rtrim(number_format((float) $state, 2), '0'), '.') . '% a month'
+                        : 'Interest free')
+                    ->color(fn (Loan $record) => $record->apply_interest ? null : 'gray')
+                    ->toggleable()
+                    ->visibleFrom('lg'),
+
+                Tables\Columns\TextColumn::make('due_date')
+                    ->label('Due')
+                    ->date('j M Y')
+                    ->sortable()
+                    // An overdue date is worth noticing without reading the
+                    // status column as well.
+                    ->color(fn (Loan $record) => $record->due_date
+                        && $record->due_date->isPast()
+                        && $record->debt_status !== DebtStatusEnum::Cleared
+                            ? 'danger'
+                            : null)
+                    ->description(fn (Loan $record) => $record->due_date
+                        && $record->due_date->isPast()
+                        && $record->debt_status !== DebtStatusEnum::Cleared
+                            ? 'Overdue'
+                            : null),
+
                 Tables\Columns\TextColumn::make('debt_status')
-                    ->label('Debt Status')
+                    ->label('Status')
                     ->badge()
-                    ->searchable()
-                    ->sortable()
-                    ->color(function ($state) {
-                        return $state->getColor();
-                    }),
+                    ->formatStateUsing(fn ($state) => $state->getLabel())
+                    ->icon(fn ($state) => $state->getIcon())
+                    ->color(fn ($state) => $state->getColor())
+                    ->sortable(),
+
                 Tables\Columns\TextColumn::make('created_at')
-                    ->dateTime()
-                    ->sortable()
-                    ->toggleable(isToggledHiddenByDefault: true),
-                Tables\Columns\TextColumn::make('updated_at')
-                    ->dateTime()
+                    ->label('Issued')
+                    ->date('j M Y')
                     ->sortable()
                     ->toggleable(isToggledHiddenByDefault: true),
             ])
             ->filters([
-                Tables\Filters\SelectFilter::make('users')
+                Tables\Filters\SelectFilter::make('user_id')
                     ->relationship('user', 'name')
-                    ->label('Members')
+                    ->label('Member')
                     ->multiple()
                     ->searchable()
-                    ->preload(),
+                    ->preload()
+                    ->visible(fn () => (bool) auth()->user()?->isAdmin()),
+
+                Tables\Filters\SelectFilter::make('debt_status')
+                    ->label('Status')
+                    ->options(DebtStatusEnum::options())
+                    ->multiple(),
+
+                Tables\Filters\Filter::make('overdue')
+                    ->label('Overdue only')
+                    ->toggle()
+                    ->query(fn (Builder $query) => $query
+                        ->whereDate('due_date', '<', today())
+                        ->where('debt_status', '!=', DebtStatusEnum::Cleared->value)),
             ])
             ->actions([
-                Tables\Actions\EditAction::make()->visible(fn($record) => $record->debt_status !== DebtStatusEnum::Cleared),
+                Tables\Actions\EditAction::make()
+                    ->visible(fn (Loan $record) => $record->debt_status !== DebtStatusEnum::Cleared
+                        && (bool) auth()->user()?->isAdmin()),
             ])
             ->bulkActions([
                 Tables\Actions\BulkActionGroup::make([
-                    Tables\Actions\DeleteBulkAction::make(),
+                    Tables\Actions\DeleteBulkAction::make()
+                        ->modalHeading('Delete these loans?')
+                        ->modalDescription('This removes the loan records only. Any debt already raised against these members stays in place and will still show as owing.'),
                 ]),
             ]);
     }
 
     // Eager-load user's credited-loan debts to avoid N+1 queries when rendering the table
-    public static function getEloquentQuery(): Builder
+    protected static function baseEloquentQuery(): Builder
     {
-        return parent::getEloquentQuery()->with(['user.debts' => function ($q) {
+        return parent::getEloquentQuery()->with(['user' => fn ($q) => $q->with(['debts' => function ($q) {
             $q->whereNull('account_id')->orderByDesc('created_at');
-        }]);
+        }])]);
     }
 
     public static function getRelations(): array
     {
-        return [
-            //
-        ];
+        return [];
     }
 
     public static function getPages(): array

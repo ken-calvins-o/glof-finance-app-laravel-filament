@@ -38,8 +38,15 @@ class EditLoan extends EditRecord
             $oldAmount = (float) $record->amount;
             $oldInterest = is_numeric($record->interest) ? (float) $record->interest : 0.0;
             $oldApplyInterest = $record->apply_interest ?? false;
-            $oldCreditAmount = $oldApplyInterest ? ($oldAmount + $oldInterest) : $oldAmount;
             $oldBalance = (float) $record->balance;
+
+            /*
+             * What the member owed before this edit is simply the old balance.
+             * Deriving it as "amount + interest" only worked while `interest`
+             * held shillings; now that it consistently holds the monthly rate,
+             * that sum would add a percentage to a shilling figure.
+             */
+            $oldCreditAmount = $oldBalance;
 
             // Determine new amount/interest/apply_interest from incoming data OR fallback to existing
             $newAmount = isset($data['amount']) ? (float) $data['amount'] : (float) $record->amount;
@@ -66,9 +73,9 @@ class EditLoan extends EditRecord
             $record->balance = $computedBalance;
             $record->save();
 
-            // Recompute new credit amount after save (consistent with earlier logic)
-            $newCreditAmount = $newApplyInterest ? ($newAmount + $newInterest) : $newAmount;
+            // What the member owes after this edit — again, the balance itself.
             $newBalance = $computedBalance;
+            $newCreditAmount = $newBalance;
 
             // Find existing 'Credited Loan' debt for this user (account_id is NULL)
             $debt = Debt::where('user_id', $record->user_id)

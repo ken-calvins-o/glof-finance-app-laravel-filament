@@ -43,32 +43,41 @@ class Income extends Model
     public static function getForm()
     {
         return [
-            Section::make('Income Details')
-                ->icon('heroicon-s-pencil-square')
-                ->columns(['md' => 2, 'lg' => 2])
-            ->schema([
-                Select::make('user_id')
-                    ->label('Member')
-                    ->relationship('user', 'name')
-                    ->searchable()
-                    ->preload()
-                    ->editOptionForm(User::getForm())
-                    ->createOptionForm(User::getForm())
-                    ->required(),
-                Select::make('account_id')
-                    ->label('Account')
-                    ->relationship('account', 'name')
-                    ->searchable()
-                    ->preload()
-                    ->required(),
-                TextInput::make('income_amount')
-                    ->label('Income Amount')
-                    ->required()
-                    ->numeric()
-                    ->minValue('1')
-                    ->hintIcon('heroicon-o-currency-dollar')
-                    ->prefix('Kes'),
-            ])->columns(3),
+            Section::make('Income received')
+                ->description('Money the group has earned. Joining fees and loan interest are recorded automatically — use this for anything else.')
+                ->icon('heroicon-o-banknotes')
+                ->columns(2)
+                ->schema([
+                    Select::make('user_id')
+                        ->label('Who did it come from?')
+                        ->relationship('user', 'name')
+                        ->searchable()
+                        ->preload()
+                        ->native(false)
+                        ->createOptionForm(User::getForm())
+                        ->required(),
+
+                    Select::make('account_id')
+                        ->label('Which fund does it belong to?')
+                        ->relationship('account', 'name')
+                        ->searchable()
+                        ->preload()
+                        ->native(false)
+                        ->required(),
+
+                    TextInput::make('income_amount')
+                        ->label('Amount')
+                        ->prefix('KES')
+                        ->numeric()
+                        ->minValue(1)
+                        ->required(),
+
+                    TextInput::make('origin')
+                        ->label('What kind of income is it?')
+                        ->placeholder('e.g. Fine, Fundraiser, Bank interest')
+                        ->helperText('A short label so this entry makes sense on a report later.')
+                        ->maxLength(255),
+                ]),
         ];
     }
 }

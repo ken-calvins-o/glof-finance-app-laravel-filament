@@ -14,6 +14,23 @@ class CreateLoan extends CreateRecord
 {
     protected static string $resource = LoanResource::class;
 
+    protected static ?string $title = 'Issue a loan';
+
+    public function getSubheading(): ?string
+    {
+        return 'The member is credited with the money and a repayment record is opened automatically.';
+    }
+
+    protected function getCreateFormAction(): \Filament\Actions\Action
+    {
+        return parent::getCreateFormAction()->label('Issue loan');
+    }
+
+    protected function getCreatedNotificationTitle(): ?string
+    {
+        return 'Loan issued';
+    }
+
     /**
      * Handle loan record creation with precise operations on related models.
      *
@@ -24,10 +41,10 @@ class CreateLoan extends CreateRecord
     {
         return DB::transaction(function () use ($data) {
             // Calculate interest and final balance
-            [$interestAmount, $balance] = $this->calculateInterestAndBalance($data);
+            [$interestAmount, $balance, $rate] = $this->calculateInterestAndBalance($data);
 
             // Create the loan record
-            $loan = $this->createLoanRecord($data, $balance, $interestAmount);
+            $loan = $this->createLoanRecord($data, $balance, $rate);
 
             // Create Income record if interest is applied
             if ($interestAmount > 0) {
@@ -44,20 +61,29 @@ class CreateLoan extends CreateRecord
     /**
      * Calculate the interest amount and the total balance.
      *
+     * The `interest` column holds the monthly *rate*, which is how the loans
+     * table labels it ("Interest P.M.%") and how the edit page reads it back.
+     * Creation used to ignore the rate the treasurer entered, hard-code 1%, and
+     * then store the resulting shilling amount in that same column. Editing the
+     * loan afterwards read those shillings as a percentage: a KES 50,000 loan
+     * stored "500" as its rate, so one save turned a KES 50,500 balance into
+     * KES 2,550,000. Storing the rate consistently is what closes that.
+     *
      * @param array $data
-     * @return array [interestAmount, balance]
+     * @return array{0: float, 1: float, 2: float} [interestAmount, balance, rate]
      */
     private function calculateInterestAndBalance(array $data): array
     {
-        if ($data['apply_interest']) {
-            $interestAmount = $data['amount'] * 0.01; // Interest is 1% of loan amount
-            $balance = $data['amount'] + $interestAmount;
-        } else {
-            $interestAmount = 0;
-            $balance = $data['amount'];
-        }
+        $amount = (float) $data['amount'];
+        $applyInterest = (bool) ($data['apply_interest'] ?? false);
+        $rate = isset($data['interest']) && is_numeric($data['interest'])
+            ? (float) $data['interest']
+            : Loan::DEFAULT_MONTHLY_RATE;
 
-        return [$interestAmount, $balance];
+        $interestAmount = Loan::interestAmount($amount, $rate, $applyInterest);
+        $balance = Loan::repayableAmount($amount, $rate, $applyInterest);
+
+        return [$interestAmount, $balance, $applyInterest ? $rate : 0.0];
     }
 
     /**
@@ -65,15 +91,15 @@ class CreateLoan extends CreateRecord
      *
      * @param array $data
      * @param float $balance
-     * @param float $interestAmount
+     * @param float $rate The monthly interest rate, as a percentage.
      * @return Loan
      */
-    private function createLoanRecord(array $data, float $balance, float $interestAmount): Loan
+    private function createLoanRecord(array $data, float $balance, float $rate): Loan
     {
         // Save the loan record
         return static::getModel()::create(array_merge($data, [
             'balance' => $balance,
-            'interest' => $interestAmount,
+            'interest' => $rate,
         ]));
     }
 
@@ -101,10 +127,17 @@ class CreateLoan extends CreateRecord
      */
     private function updateUserFinancialRecords(Loan $loan): void
     {
-        // Fetch the most recent saving record for the user
+        /*
+         * Fetch the most recent saving record for the user.
+         *
+         * This used to be firstOrFail(), which meant issuing a loan to a member
+         * who had no ledger row yet failed with a bare "no query results" page
+         * and no indication of what to do about it. A member with no history
+         * simply starts from zero.
+         */
         $currentSaving = Saving::where('user_id', $loan->user_id)
-            ->orderBy('created_at', 'desc')
-            ->firstOrFail(); // Ensure the latest is fetched
+            ->orderBy('id', 'desc')
+            ->first() ?? new Saving(['balance' => 0, 'net_worth' => 0]);
 
         // Update the savings record
         $this->updateSavings($loan, $currentSaving);
@@ -124,8 +157,14 @@ class CreateLoan extends CreateRecord
     {
         $currentNetWorth = $currentSaving->net_worth ?? 0;
 
-        // Use `amount` to reduce net worth unless interest is applied
-        $creditAmount = $loan->apply_interest ? $loan->amount + $loan->interest : $loan->amount;
+        /*
+         * The member's net worth drops by everything they will have to repay.
+         * That is exactly the loan balance — amount plus interest when interest
+         * applies, amount alone when it does not — so reading it off `balance`
+         * both matches the previous behaviour and stops this line from adding
+         * an interest *rate* to a shilling amount.
+         */
+        $creditAmount = (float) $loan->balance;
 
         // Calculate the new net worth
         $newNetWorth = $currentNetWorth - $creditAmount;
