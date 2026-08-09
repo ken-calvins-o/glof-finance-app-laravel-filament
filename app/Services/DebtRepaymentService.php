@@ -14,6 +14,7 @@ use App\Models\ReceivableYear;
 use App\Models\Saving;
 use App\Models\Year;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 use RuntimeException;
 
 /**
@@ -139,6 +140,19 @@ class DebtRepaymentService
     }
 
     /**
+     * Whether the receivables table has the `source` column yet.
+     *
+     * Cached for the life of the process: the answer cannot change under a
+     * running request, and this sits on the repayment path.
+     */
+    protected static ?bool $receivablesCanRecordSource = null;
+
+    protected static function receivablesCanRecordSource(): bool
+    {
+        return static::$receivablesCanRecordSource ??= Schema::hasColumn('receivables', 'source');
+    }
+
+    /**
      * Write the repayment into the collections ledger.
      *
      * Note this does NOT touch the fund's running total or the savings ledger —
@@ -147,14 +161,31 @@ class DebtRepaymentService
      */
     protected function recordAsCollection(Debt $debt, float $amount): void
     {
-        $receivable = Receivable::create([
+        $attributes = [
             'user_id' => $debt->user_id,
             'account_id' => $debt->account_id,
             'amount_contributed' => $amount,
             'from_savings' => false,
             'payment_method' => PaymentMode::Cash->value,
-            'source' => Receivable::SOURCE_DEBT_REPAYMENT,
-        ]);
+        ];
+
+        /*
+         * `source` only labels the row; it moves no money. So if the migration
+         * that adds it has not run yet — code deployed ahead of migrations is an
+         * ordinary thing to happen — the repayment still goes through without
+         * it, rather than the whole operation failing on a column that exists
+         * to caption a table.
+         *
+         * Until the migration runs, such a row is indistinguishable from an
+         * ordinary collection: it will read without the "Settling a debt"
+         * caption and will offer a Reverse action it should not. Run the
+         * migration and both come right for rows created afterwards.
+         */
+        if (static::receivablesCanRecordSource()) {
+            $attributes['source'] = Receivable::SOURCE_DEBT_REPAYMENT;
+        }
+
+        $receivable = Receivable::create($attributes);
 
         // File it in the current period so it is not blank in the "For" column.
         $month = Month::where('name', now()->format('F'))->value('id');
