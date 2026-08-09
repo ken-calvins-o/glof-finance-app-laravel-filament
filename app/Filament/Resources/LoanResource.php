@@ -124,7 +124,8 @@ class LoanResource extends Resource
                         ? rtrim(rtrim(number_format((float) $state, 2), '0'), '.') . '% a month'
                         : 'Interest free')
                     ->color(fn (Loan $record) => $record->apply_interest ? null : 'gray')
-                    ->toggleable(),
+                    ->toggleable()
+                    ->visibleFrom('lg'),
 
                 Tables\Columns\TextColumn::make('due_date')
                     ->label('Due')

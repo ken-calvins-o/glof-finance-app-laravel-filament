@@ -144,14 +144,16 @@ class ReceivableResource extends Resource
                     ->formatStateUsing(fn ($state) => PaymentMode::tryFrom((string) $state)?->getLabel() ?? $state)
                     ->color(fn ($state) => PaymentMode::tryFrom((string) $state)?->getColor() ?? 'gray')
                     ->icon(fn ($state) => PaymentMode::tryFrom((string) $state)?->getIcon())
-                    ->sortable(),
+                    ->sortable()
+                    ->visibleFrom('md'),
 
                 Tables\Columns\TextColumn::make('period')
                     ->label('For')
                     ->getStateUsing(fn (Receivable $record) => trim(
                         $record->months->pluck('name')->implode(', ') . ' ' . $record->years->pluck('year')->implode(', ')
                     ) ?: '—')
-                    ->toggleable(),
+                    ->toggleable()
+                    ->visibleFrom('lg'),
 
                 Tables\Columns\TextColumn::make('created_at')
                     ->label('Recorded')

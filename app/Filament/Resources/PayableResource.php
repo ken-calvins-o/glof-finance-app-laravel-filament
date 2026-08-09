@@ -119,14 +119,16 @@ class PayableResource extends Resource
                     ->tooltip(fn (Payable $record) => $record->from_savings
                         ? 'Taken from the savings this member holds with the group'
                         : 'Paid separately by the member')
-                    ->alignCenter(),
+                    ->alignCenter()
+                    ->visibleFrom('md'),
 
                 TextColumn::make('is_general')
                     ->label('Split')
                     ->badge()
                     ->formatStateUsing(fn ($state) => $state ? 'Same for all' : 'Individual')
                     ->color(fn ($state) => $state ? 'info' : 'gray')
-                    ->toggleable(),
+                    ->toggleable()
+                    ->visibleFrom('lg'),
 
                 TextColumn::make('period')
                     ->label('For')

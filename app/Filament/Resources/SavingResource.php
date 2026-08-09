@@ -121,7 +121,8 @@ class SavingResource extends Resource
                     ->tooltip('The member’s savings balance immediately after this transaction'),
 
                 MoneyColumn::make('net_worth', 'Net worth after')
-                    ->tooltip('Everything the member had put in, less what they had drawn, immediately after this transaction'),
+                    ->tooltip('Everything the member had put in, less what they had drawn, immediately after this transaction')
+                    ->visibleFrom('lg'),
             ])
             ->filters([
                 Tables\Filters\SelectFilter::make('user_id')

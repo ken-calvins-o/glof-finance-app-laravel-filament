@@ -67,7 +67,11 @@ class WhoOwesUs extends BaseWidget
                     ->label('Status')
                     ->badge()
                     ->color(fn ($state) => $state->getColor())
-                    ->formatStateUsing(fn ($state) => $state->getLabel()),
+                    ->formatStateUsing(fn ($state) => $state->getLabel())
+                    // On a phone the row has to hold the member, the amount and
+                    // the repayment button. Status is the first thing that can
+                    // go: the amount already says they owe.
+                    ->visibleFrom('md'),
 
                 TextColumn::make('created_at')
                     ->label('Owing since')

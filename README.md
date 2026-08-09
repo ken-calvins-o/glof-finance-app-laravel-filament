@@ -63,6 +63,12 @@ before changing it:
    figure never looks different on two screens.
 6. **Badges must be actionable.** Sidebar badges show money collected this
    month or the number of members behind on payments — never a row count.
+7. **It has to work on a phone.** Treasurers record collections at meetings, on
+   whatever handset is in their pocket. Every screen is checked at 360px and
+   390px: nothing bleeds off the side of the page, forms stack to one column,
+   and secondary table columns drop out with `->visibleFrom()` so the row's
+   action stays reachable. Data tables still scroll sideways on a phone, which
+   is normal — but the page itself never does.
 
 Amounts are formatted through `App\Support\Money`; shared table columns live in
 `App\Filament\Tables\Columns\MoneyColumn`; and the sidebar's structure is

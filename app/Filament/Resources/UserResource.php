@@ -115,7 +115,8 @@ class UserResource extends Resource
                     ->label('Savings')
                     ->alignEnd()
                     ->getStateUsing(fn (User $record) => $record->savings_balance)
-                    ->formatStateUsing(fn ($state) => Money::kes($state)),
+                    ->formatStateUsing(fn ($state) => Money::kes($state))
+                    ->visibleFrom('md'),
 
                 Tables\Columns\TextColumn::make('net_worth')
                     ->label('Net worth')
@@ -134,6 +135,7 @@ class UserResource extends Resource
 
                 Tables\Columns\TextColumn::make('member_status')
                     ->label('Status')
+                    ->visibleFrom('sm')
                     ->badge()
                     ->formatStateUsing(fn ($state) => $state?->getLabel())
                     ->icon(fn ($state) => $state?->getIcon())

@@ -121,6 +121,7 @@ class DebtResource extends Resource
                 Tables\Columns\TextColumn::make('account.name')
                     ->label('Owed on')
                     ->badge()
+                    ->visibleFrom('sm')
                     ->color('gray')
                     // A debt with no fund is a loan. Saying "Loan" beats the
                     // internal phrase "Credited Loan", which meant nothing to
@@ -138,7 +139,10 @@ class DebtResource extends Resource
                     ->icon(fn ($state) => $state->getIcon())
                     ->color(fn ($state) => $state->getColor())
                     ->searchable()
-                    ->sortable(),
+                    ->sortable()
+                    // The page opens on the "Still owing" tab, so on a phone the
+                    // status column mostly repeats what the tab already said.
+                    ->visibleFrom('md'),
 
                 Tables\Columns\TextColumn::make('last_interest_applied_on')
                     ->label('Interest last added')

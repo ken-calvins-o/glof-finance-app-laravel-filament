@@ -88,3 +88,61 @@
         @apply shrink-0;
     }
 }
+
+/*
+| Phone layout.
+|
+| These rules are deliberately unlayered. Tailwind emits its utilities in the
+| `utilities` cascade layer, and unlayered declarations beat layered ones, so
+| this is what lets them override the `w-max` and `grid-flow-col` that Filament
+| sets directly in its markup. Inside @layer they would simply lose.
+*/
+@media (max-width: 639px) {
+    /*
+    | A grouped set of toggle buttons is a segmented control laid out in a
+    | single row at its natural width. That is fine for "Yes / No", but this app
+    | asks real questions — "Everyone pays the same" against "Different amount
+    | each" — and two labels of that length are wider than a phone. The group
+    | ran off the side of the screen with the second option unreachable.
+    |
+    | Below `sm` they stack instead, each full width. Scoped to form fields so
+    | that button groups elsewhere (table headers, page actions) keep their
+    | horizontal layout.
+    */
+    .fi-fo-field-wrp .fi-btn-group {
+        width: 100%;
+        grid-auto-flow: row;
+    }
+
+    /* Stacked, the rounding has to move from the ends to the top and bottom. */
+    .fi-fo-field-wrp .fi-btn-group > :first-child,
+    .fi-fo-field-wrp .fi-btn-group > :first-child .fi-btn {
+        border-start-start-radius: 0.5rem;
+        border-start-end-radius: 0.5rem;
+        border-end-start-radius: 0;
+    }
+
+    .fi-fo-field-wrp .fi-btn-group > :last-child,
+    .fi-fo-field-wrp .fi-btn-group > :last-child .fi-btn {
+        border-end-start-radius: 0.5rem;
+        border-end-end-radius: 0.5rem;
+        border-start-end-radius: 0;
+    }
+
+    /*
+    | A widget header lays its heading and description out beside whatever sits
+    | in the headerEnd slot — the chart's period filter, the fund list's grand
+    | total. On a phone that leaves the description wrapping in a column a few
+    | words wide next to a dropdown.
+    |
+    | Letting that row wrap, with the text claiming the full width, drops the
+    | control onto its own line and gives the description room to read.
+    */
+    .fi-wi .fi-section-header > div {
+        flex-wrap: wrap;
+    }
+
+    .fi-wi .fi-section-header > div > .grid {
+        min-width: 100%;
+    }
+}
