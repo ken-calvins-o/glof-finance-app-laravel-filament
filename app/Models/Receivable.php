@@ -103,6 +103,17 @@ class Receivable extends Model
     public const ENTRY_ARREARS = 'arrears';
 
     /**
+     * Written when a collection is the settlement of a debt rather than an
+     * ordinary contribution. See the migration that added the column.
+     */
+    public const SOURCE_DEBT_REPAYMENT = 'debt_repayment';
+
+    public function isDebtRepayment(): bool
+    {
+        return $this->source === self::SOURCE_DEBT_REPAYMENT;
+    }
+
+    /**
      * How much a member has already put into a given fund.
      */
     public static function contributedSoFar(?int $userId, ?int $accountId): ?float
@@ -331,6 +342,18 @@ class Receivable extends Model
     {
         // After creating a receivable, record the system effects so we can revert later.
         static::created(function (Receivable $receivable) {
+            /*
+             * A repayment-sourced collection is written by DebtRepaymentService
+             * after it has already adjusted the debt, the fund total and the
+             * savings ledger itself. Recording reversal effects for it would
+             * describe changes this row did not make, so it is skipped — and the
+             * Collections table hides "Reverse" on these rows for the same
+             * reason.
+             */
+            if ($receivable->isDebtRepayment()) {
+                return;
+            }
+
             // Delegates to service which inspects DB and saves an effect snapshot
             try {
                 // Avoid double-recording: if an effect was already created (e.g. in CreateReceivable), skip

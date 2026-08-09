@@ -76,6 +76,15 @@ class UserResource extends Resource
         ];
     }
 
+    /**
+     * Savings, net worth and money owed come back with the members themselves
+     * rather than being fetched per row — see User::scopeWithMoneyTotals().
+     */
+    public static function getEloquentQuery(): Builder
+    {
+        return parent::getEloquentQuery()->withMoneyTotals();
+    }
+
     public static function form(Form $form): Form
     {
         return $form->schema(User::getForm());

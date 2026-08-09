@@ -133,10 +133,14 @@ class ReceivableResource extends Resource
 
                 MoneyColumn::withTotal('amount_contributed', 'Amount')
                     // A negative row is arrears, not a payment. Saying so beats
-                    // leaving the reader to interpret a minus sign.
-                    ->description(fn (Receivable $record) => (float) $record->amount_contributed < 0
-                        ? 'Recorded as arrears'
-                        : null),
+                    // leaving the reader to interpret a minus sign. A repayment
+                    // is money in like any other, but worth naming so the
+                    // treasurer can see why it appeared without them entering it.
+                    ->description(fn (Receivable $record) => match (true) {
+                        (float) $record->amount_contributed < 0 => 'Recorded as arrears',
+                        $record->isDebtRepayment() => 'Settling a debt',
+                        default => null,
+                    }),
 
                 Tables\Columns\TextColumn::make('payment_method')
                     ->label('Paid by')
@@ -184,6 +188,17 @@ class ReceivableResource extends Resource
                         ->all())
                     ->multiple(),
 
+                Tables\Filters\TernaryFilter::make('source')
+                    ->label('Kind of entry')
+                    ->placeholder('All collections')
+                    ->trueLabel('Debt repayments only')
+                    ->falseLabel('Ordinary contributions only')
+                    ->queries(
+                        true: fn (Builder $query) => $query->where('source', Receivable::SOURCE_DEBT_REPAYMENT),
+                        false: fn (Builder $query) => $query->whereNull('source'),
+                        blank: fn (Builder $query) => $query,
+                    ),
+
                 Tables\Filters\Filter::make('recorded_between')
                     ->form([
                         \Filament\Forms\Components\DatePicker::make('from')->label('Recorded from'),
@@ -228,7 +243,16 @@ class ReceivableResource extends Resource
                         $record->account?->name ?? 'this fund',
                     ))
                     ->modalSubmitActionLabel('Yes, reverse it')
-                    ->visible(fn () => (bool) auth()->user()?->isAdmin())
+                    /*
+                    | Repayments are not reversible from here. This row is a
+                    | record of a debt settlement that DebtRepaymentService
+                    | already applied to the debt, the fund and the savings
+                    | ledger; reversing it would undo the collection without
+                    | restoring the debt, leaving the two out of step. Undo a
+                    | repayment by correcting the debt itself.
+                    */
+                    ->visible(fn (Receivable $record) => (bool) auth()->user()?->isAdmin()
+                        && ! $record->isDebtRepayment())
                     ->action(function (Receivable $record): void {
                         try {
                             (new ReceivableService())->safeDelete($record, auth()->id());
