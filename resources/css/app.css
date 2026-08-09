@@ -55,25 +55,6 @@
     }
 
     /*
-    | Stat cards carry the headline numbers on the dashboard. Tightening the
-    | value and letting the description breathe makes the hierarchy obvious at
-    | a glance: number first, context second.
-    */
-    /*
-    | Full precision matters on a money stat — "KES 445.0K" is not something a
-    | treasurer can read a figure out of in a meeting. So the value stays exact
-    | and the type shrinks instead, sized so that a seven-figure amount still
-    | sits on one line in a quarter-width card.
-    */
-    .fi-wi-stats-overview-stat-value {
-        @apply whitespace-nowrap text-xl font-semibold tracking-tight;
-    }
-
-    .fi-wi-stats-overview-stat-label {
-        @apply text-sm font-medium text-gray-500 dark:text-gray-400;
-    }
-
-    /*
     | Section headers inside forms: the original forms nested Fieldset inside
     | Fieldset inside Section, producing three visible boxes around one field.
     | The redesign uses a single Section per decision, so its heading needs to
@@ -87,6 +68,34 @@
     .fi-fo-wizard-header-step-icon-ctn {
         @apply shrink-0;
     }
+}
+
+/*
+| Overriding what Filament writes into its own markup.
+|
+| These rules are unlayered on purpose. Filament sets some of its sizing with
+| Tailwind utilities written straight into its Blade templates, and utilities
+| live in the `utilities` cascade layer, which beats `components`. Anything here
+| that targets a `fi-` class Filament also styles inline has to sit outside a
+| layer to win — inside `@layer components` these silently lose, which is what
+| happened to the stat sizing below: it was written, it looked right in the
+| stylesheet, and the dashboard went on rendering at Filament's own size.
+*/
+
+/*
+| Full precision matters on a money stat — "KES 445.0K" is not something a
+| treasurer can read a figure out of in a meeting. So the value stays exact and
+| the type shrinks instead, sized so that a seven-figure amount still sits on
+| one line in a quarter-width card. At Filament's own text-3xl the four cards
+| overflowed the content column and the last one was cut off at 1280px wide.
+*/
+.fi-wi-stats-overview-stat-value {
+    @apply whitespace-nowrap text-xl font-semibold tracking-tight;
+}
+
+/* Label above, number below: the number should be the thing you see first. */
+.fi-wi-stats-overview-stat-label {
+    @apply text-sm font-medium text-gray-500 dark:text-gray-400;
 }
 
 /*
