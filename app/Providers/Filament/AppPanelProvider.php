@@ -41,7 +41,11 @@ class AppPanelProvider extends PanelProvider
             ->passwordReset()
             ->profile()
             ->brandName('Glof Finance')
-            ->favicon(asset('favicon.ico'))
+            // Deferred with a closure: called eagerly, asset() resolves while the
+            // panel is being registered, before the request's scheme is known,
+            // so it hard-coded http:// and became the one mixed-content warning
+            // on an https tunnel.
+            ->favicon(fn (): string => asset('favicon.ico'))
 
             /*
             | Colour carries meaning in a money app, so the palette is assigned

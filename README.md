@@ -254,6 +254,49 @@ Remember that this project uses a **custom Filament theme**, so any change to
 `resources/css/app.css`, or any new utility class in a Blade or PHP file,
 requires a rebuild (`npm run build`) before it shows up in production assets.
 
+### Opening the app on your phone
+
+Two ways, depending on whether the phone needs to reach it from anywhere or
+just from your own Wi-Fi.
+
+**Over the internet — `herd share`.** From inside the project folder:
+
+```bash
+herd share
+```
+
+Herd prints a public HTTPS URL you can open on any device. Before you do, set
+this in `.env`:
+
+```
+TRUSTED_PROXIES=*
+```
+
+Sharing terminates TLS at the tunnel and forwards to the app over plain HTTP.
+Without that setting Laravel believes the request was insecure, builds every URL
+as `http://`, and the browser blocks the stylesheet and Livewire's JavaScript as
+mixed content — the panel loads unstyled and nothing responds. Clear the value
+again when you are done: an untrusted forwarded header can spoof client IPs.
+
+Sharing is a Herd Pro feature. If `herd share` is not available to you, use the
+local-network route below.
+
+**On your own Wi-Fi — no tunnel, no extra settings.** Serve on all interfaces:
+
+```bash
+php artisan serve --host=0.0.0.0 --port=8000
+```
+
+Find the machine's address (`ipconfig` on Windows, `ifconfig` on macOS), and on
+the phone open `http://<that-address>:8000`. Laravel builds its URLs from the
+request, so the LAN address is used automatically and `APP_URL` does not need
+changing. Windows will ask to allow PHP through the firewall the first time —
+allow it on private networks.
+
+This route bypasses Herd entirely, so the `.test` domain is not involved. It is
+plain HTTP on your own network, which is fine for testing and not something to
+expose beyond it.
+
 ### The scheduler and the queue
 
 Monthly interest is applied by a scheduled command (see below). Herd Pro can run
