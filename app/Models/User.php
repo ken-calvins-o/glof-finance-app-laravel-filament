@@ -9,6 +9,8 @@ use App\Enums\RoleEnum;
 use Filament\Forms\Components\Section;
 use Filament\Forms\Components\Select;
 use Filament\Forms\Components\TextInput;
+use Filament\Models\Contracts\FilamentUser;
+use Filament\Panel;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Relations\HasMany;
@@ -16,10 +18,9 @@ use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Validation\Rule;
-use SebastianBergmann\CodeCoverage\Report\Xml\Report;
 use Ysfkaya\FilamentPhoneInput\Forms\PhoneInput;
 
-class User extends Authenticatable
+class User extends Authenticatable implements FilamentUser
 {
     use HasFactory, Notifiable;
 
@@ -85,11 +86,6 @@ class User extends Authenticatable
         return $this->hasMany(Income::class);
     }
 
-    public function reports(): HasMany
-    {
-        return $this->hasMany(Report::class);
-    }
-
     public function accounts()
     {
         return $this->belongsToMany(Account::class, 'account_user')
@@ -109,6 +105,28 @@ class User extends Authenticatable
     /* ---------------------------------------------------------------------
      | Role
      |---------------------------------------------------------------------*/
+
+    /**
+     * Whether this person may sign in to the app at all.
+     *
+     * Filament asks the user model this question, and when the model does not
+     * answer it, it falls back to `config('app.env') === 'local'` — meaning the
+     * app let everyone in while it was being built and would have turned every
+     * single page into a 403 the moment it was deployed anywhere else. It has
+     * only ever run locally, so nobody had hit it yet.
+     *
+     * The rule is simply "anyone who can sign in": having a password is what
+     * makes someone a user of the app, and their role decides what they then
+     * see. Membership status is deliberately not a gate here — "Inactive" is
+     * described in the app as *not currently contributing, kept for historical
+     * records*, and locking those members out of their own history would be a
+     * new policy rather than a bug fix. If the group wants a status to bar
+     * someone from signing in, that is a decision for the group to make here.
+     */
+    public function canAccessPanel(Panel $panel): bool
+    {
+        return true;
+    }
 
     public function isAdmin(): bool
     {
@@ -260,7 +278,7 @@ class User extends Authenticatable
         <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><rect width="64" height="64" rx="32" fill="{$background}"/><text x="32" y="33" font-family="Inter, system-ui, sans-serif" font-size="26" font-weight="600" fill="#ffffff" text-anchor="middle" dominant-baseline="central">{$this->initials}</text></svg>
         SVG;
 
-        return 'data:image/svg+xml;base64,' . base64_encode($svg);
+        return 'data:image/svg+xml;base64,'.base64_encode($svg);
     }
 
     /* ---------------------------------------------------------------------

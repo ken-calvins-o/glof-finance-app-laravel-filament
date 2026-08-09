@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Enums\MemberStatus;
 use App\Enums\RoleEnum;
 use App\Filament\Resources\AccountResource;
 use App\Filament\Resources\DebtResource;
@@ -127,7 +128,7 @@ class MemberAccessTest extends TestCase
             $this->assertStringContainsString(
                 'user_id',
                 $sql,
-                $resource . ' does not scope its query to the signed-in member.',
+                $resource.' does not scope its query to the signed-in member.',
             );
         }
     }
@@ -178,5 +179,40 @@ class MemberAccessTest extends TestCase
 
         $this->assertFalse(DebtResource::canCreate());
         $this->assertFalse(SavingResource::canCreate());
+    }
+
+    /* ---------------------------------------------------------------------
+     | Who may sign in at all
+     |
+     | The model did not answer this question, so Filament fell back to its own
+     | default of "only when APP_ENV is local" — which let everyone in during
+     | development and would have returned 403 on every page anywhere else.
+     |---------------------------------------------------------------------*/
+
+    public function test_an_active_member_can_sign_in(): void
+    {
+        $panel = \Filament\Facades\Filament::getPanel('app');
+
+        $this->assertTrue($this->member()->canAccessPanel($panel));
+        $this->assertTrue($this->treasurer()->canAccessPanel($panel));
+    }
+
+    /**
+     * A member who has paused keeps their history and can still read it. The
+     * app describes Inactive as "kept for historical records", so shutting them
+     * out of their own statement would contradict what the status means. Their
+     * role still limits them to their own money.
+     */
+    public function test_a_member_marked_inactive_can_still_read_their_own_history(): void
+    {
+        $paused = User::factory()->create([
+            'role' => RoleEnum::Member,
+            'member_status' => MemberStatus::Inactive,
+        ]);
+
+        $this->assertTrue($paused->canAccessPanel(\Filament\Facades\Filament::getPanel('app')));
+
+        $this->actingAs($paused);
+        $this->assertFalse(UserResource::canAccess());
     }
 }
